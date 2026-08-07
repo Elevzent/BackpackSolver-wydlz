@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="zh">
+	<head>
+		<meta charset="UTF-8" />
+		<!-- maximum-scale / user-scalable 禁止 Safari 等移动端浏览器莫名其妙放大页面（含聚焦输入框时的自动放大） -->
+		<meta
+			name="viewport"
+			content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+		<title>背包求解</title>
+		<link rel="stylesheet" href="css/style.common.css" />
+		<link rel="stylesheet" href="css/style.main.css" />
+	</head>
+	<body>
+		<header class="page-header">
+			<h1>法宝背包求解</h1>
+			<p class="header-intro">
+				一个纯网页端的法宝背包布局求解工具，多线程求解器自动搜索得分最高的摆放方案。
+			</p>
+			<p class="header-flow">
+				添加法宝<span class="flow-arrow">→</span>设置棋盘<span
+					class="flow-arrow"
+					>→</span
+				>权重与模式<span class="flow-arrow">→</span>开始计算<span
+					class="flow-arrow"
+					>→</span
+				>保存与回溯
+			</p>
+		</header>
+		<main>
+			<div class="panel left-panel">
+				<div class="block-select">
+					<div class="panel-header">
+						<span>法宝列表</span>
+						<div class="type-select-row">
+							<label for="type-select">法宝属性：</label>
+							<select class="type-select"></select>
+						</div>
+					</div>
+					<div class="scroll-box table-scroll">
+						<table class="table block-table">
+							<thead>
+								<tr>
+									<th>法宝名称</th>
+									<th>形状</th>
+									<th>基础属性</th>
+									<th>加成</th>
+									<th>品质</th>
+									<th>添加数量</th>
+									<th>操作</th>
+								</tr>
+							</thead>
+							<tbody></tbody>
+						</table>
+					</div>
+				</div>
+			</div>
+
+			<div class="panel selected-block">
+				<div class="panel-header">
+					<span>已选列表</span>
+					<span class="header-stats"
+						>当前 <b class="stats-count">0</b> 件，格数
+						<b class="stats-cells">0/0</b></span
+					>
+					<button class="scan-open-btn">截图导入</button>
+					<button class="btn-danger clear-btn">清空</button>
+				</div>
+				<div class="scroll-box table-scroll">
+					<table class="table selected-block-table">
+						<thead>
+							<tr>
+								<th>编号</th>
+								<th>法宝名称</th>
+								<th>形状</th>
+								<th>基础属性</th>
+								<th>加成</th>
+								<th>品质</th>
+								<th>添加数量</th>
+								<th>操作</th>
+							</tr>
+						</thead>
+						<tbody></tbody>
+					</table>
+				</div>
+				<div class="control-row preset-row">
+					<select class="preset-select"></select>
+					<button class="preset-save-btn">保存</button>
+					<button class="btn-danger preset-del-btn">删除</button>
+					<span class="board-hint">方案保存在浏览器本地存储中，选中即载入</span>
+				</div>
+			</div>
+
+			<div class="panel board-panel">
+				<div class="panel-header">
+					<span>棋盘设置</span>
+					<button class="apply-board-btn">应用到布局</button>
+				</div>
+				<div class="control-row board-config-row">
+					<span class="cfg-field">
+						<label for="board-cols">长：</label>
+						<input
+							id="board-cols"
+							class="num-input board-cols"
+							type="number"
+							min="1"
+							max="20"
+							value="7" />
+					</span>
+					<span class="cfg-field">
+						<label for="board-rows">宽：</label>
+						<input
+							id="board-rows"
+							class="num-input board-rows"
+							type="number"
+							min="1"
+							max="20"
+							value="6" />
+					</span>
+					<span class="board-hint">点击格子设置 / 取消禁用</span>
+				</div>
+				<div class="scroll-box board-scroll">
+					<div class="board-grid"></div>
+				</div>
+			</div>
+
+			<div class="panel layout-panel">
+				<div class="panel-header">
+					<span>实时布局</span>
+				</div>
+				<div class="control-row weight-row">
+					<span class="cfg-field">
+						<label class="c-gold" for="weight-atk">攻击：</label>
+						<input
+							id="weight-atk"
+							class="num-input weight-atk"
+							type="number"
+							min="0"
+							max="99"
+							value="0" />
+					</span>
+					<span class="cfg-field">
+						<label class="c-blue" for="weight-def">防御：</label>
+						<input
+							id="weight-def"
+							class="num-input weight-def"
+							type="number"
+							min="0"
+							max="99"
+							value="0" />
+					</span>
+					<span class="cfg-field">
+						<label class="c-red" for="weight-hp">生命：</label>
+						<input
+							id="weight-hp"
+							class="num-input weight-hp"
+							type="number"
+							min="0"
+							max="99"
+							value="0" />
+					</span>
+					<span class="board-hint"
+						>权重为 0 表示不关心该属性；三项全为 0 时按攻:防:血 = 1:1:1
+						等权计算</span
+					>
+				</div>
+				<div class="scroll-box board-scroll">
+					<div class="board-grid layout-grid"></div>
+				</div>
+				<div class="layout-legend"></div>
+				<div class="control-row layout-controls">
+					<span class="cfg-field">
+						<label for="calc-mode">模式：</label>
+						<select id="calc-mode" class="mode-select">
+							<option value="heuristic">快速求解</option>
+							<option value="lns">混合最优</option>
+						</select>
+					</span>
+					<span class="board-hint mode-hint"></span>
+					<div class="cfg-field board-row">
+						<label class="cfg-field switch-field">
+							<input type="checkbox" class="fill-first" checked />
+							<span class="switch-track"></span>
+							<span class="fill-first-text">填满优先</span>
+						</label>
+						<span class="cfg-field">
+							<label for="worker-count">线程：</label>
+							<input
+								id="worker-count"
+								class="num-input worker-count"
+								type="number"
+								min="2"
+								value="2" />
+						</span>
+					</div>
+					<span class="board-hint worker-max-hint"></span>
+					<span class="cfg-field time-limit-field">
+						<label for="calc-time-limit">耗时上限：</label>
+						<input
+							id="calc-time-limit"
+							class="num-input calc-time-limit"
+							type="number"
+							min="0"
+							max="99999"
+							value="30" />
+						<span>秒</span>
+					</span>
+					<span class="board-hint time-limit-hint"
+						>0 表示不限，到时间自动停止并结算</span
+					>
+					<button class="btn-primary calc-btn">开始计算</button>
+				</div>
+			</div>
+
+			<div class="panel log-panel">
+				<div class="panel-header">
+					<span>计算日志</span>
+					<button class="recall-btn" disabled>回溯最优</button>
+				</div>
+				<div class="scroll-box log-scroll">
+					<div class="log-status">未在计算</div>
+				</div>
+			</div>
+		</main>
+		<!-- 截图导入弹窗：定位棋盘并归一化切格，识别结果用于填入已选列表 -->
+		<div class="scan-modal" hidden>
+			<div class="scan-panel">
+				<div class="panel-header">
+					<span>截图导入</span>
+					<button class="scan-close-btn">关闭</button>
+				</div>
+				<div class="scan-body">
+					<div class="scan-media">
+						<div class="scan-drop">
+							点击选择 / 拖拽 / 粘贴游戏截图（法宝编辑界面）
+						</div>
+						<input type="file" class="scan-file" accept="image/*" hidden />
+						<div class="scan-stage" hidden>
+							<div class="scan-frame">
+								<canvas class="scan-canvas"></canvas>
+								<button class="btn-sm scan-fs-btn" hidden>全屏</button>
+								<button class="btn-sm scan-reupload-btn" hidden>
+									重新上传
+								</button>
+							</div>
+						</div>
+						<!-- 全屏预览时的操作栏：代理底部控制栏同名按钮，逻辑单一出处 -->
+						<div class="scan-fs-toolbar" hidden>
+							<button class="btn-sm scan-fs-auto">重新定位</button>
+							<button class="btn-sm scan-fs-manual">手动框选</button>
+							<button class="btn-sm scan-fs-edit">调整边界</button>
+							<button class="btn-sm scan-fs-recognize">开始识别</button>
+							<button class="btn-sm scan-fs-pick">选格补录</button>
+							<button class="btn-sm scan-fs-upload">重新上传</button>
+							<button class="btn-sm scan-fs-exit">退出全屏</button>
+						</div>
+						<div class="scan-status" hidden></div>
+					</div>
+					<div class="scan-result">
+						<div class="scan-result-head">
+							<span>识别结果</span>
+							<span class="header-stats"
+								>当前 <b class="stats-count scan-stats-count">0</b> 件，格数
+								<b class="stats-cells scan-stats-cells">0/0</b></span
+							>
+							<button class="btn-sm scan-add-btn">新增</button>
+						</div>
+						<div class="scan-result-body">
+							<table class="table scan-table">
+								<thead>
+									<tr>
+										<th>编号</th>
+										<th>缩略图</th>
+										<th>类型</th>
+										<th>名称</th>
+										<th>品质</th>
+										<th>数量</th>
+										<th>置信度</th>
+										<th></th>
+									</tr>
+								</thead>
+								<tbody class="scan-tbody"></tbody>
+							</table>
+						</div>
+					</div>
+				</div>
+				<!-- 选格补录条：点选预览图中未识别的格子组成法宝，实时显示识别结果，确认后填入结果表 -->
+				<div class="scan-pick-bar" hidden>
+					<span class="scan-pick-note board-hint"></span>
+					<span class="cfg-field">
+						<label>形状：</label>
+						<span class="scan-pick-shape">—</span>
+					</span>
+					<span class="cfg-field">
+						<label for="scan-pick-type">类型：</label>
+						<select id="scan-pick-type" class="scan-pick-type"></select>
+					</span>
+					<span class="cfg-field">
+						<label for="scan-pick-quality">品质：</label>
+						<select id="scan-pick-quality" class="scan-pick-quality"></select>
+					</span>
+					<span class="cfg-field">
+						<label for="scan-pick-name">名称：</label>
+						<span class="scan-name-combo">
+							<input
+								id="scan-pick-name"
+								type="text"
+								class="scan-name-input scan-pick-name"
+								placeholder="搜索 / 选择法宝"
+								autocomplete="off" />
+							<span
+								class="scan-name-list scan-pick-name-list"
+								hidden></span>
+						</span>
+					</span>
+					<button class="scan-pick-clear-btn">清除选择</button>
+					<button class="btn-primary scan-pick-confirm-btn">填入结果</button>
+				</div>
+				<div class="control-row scan-controls">
+					<button class="scan-auto-btn" disabled>重新定位</button>
+					<button class="scan-manual-btn" disabled>手动框选</button>
+					<button class="scan-edit-btn" disabled>调整边界</button>
+					<button class="scan-recognize-btn" disabled>开始识别</button>
+					<button class="scan-pick-btn" disabled>选格补录</button>
+					<span class="board-hint"
+						>网格行列跟随主页棋盘配置；定位不准可手动框选或调整边界</span
+					>
+					<button class="btn-primary scan-import-btn">确认导入</button>
+				</div>
+			</div>
+			<!-- 预览图法宝 tooltip：hover / 触摸棋子时显示 名称（类型）-品质；
+			     放在 .scan-media（container-type: size）之外，保证 fixed 定位相对视口 -->
+			<div class="scan-tip" hidden></div>
+		</div>
+		<!-- 游戏关联常量，需要调整的话请阅读项目目录下的`./README.md`文件，其中有详细的说明。 -->
+		<!-- 所有的形状："#" 表示占位，"\n" 表示换行，"_" 表示空格，行末的空格可以不写 -->
+		<script src="./data/shapes.data.js"></script>
+		<!-- 不同属性的全部方块集合：每个法宝按品质 normal -> [绿、蓝、紫、金] 二维数组，red -> 一维数组 -->
+		<!-- 法宝项属性值: [atk, def, hp, 加成比例]；加成 [加成类型 (0 atk、1 def、2 hp), 作用域 (0 无、1 自身、2 相邻)]，不填则无加成 -->
+		<script src="./data/blocks.data.js"></script>
+		<!-- 截图识别配置（元素圆点色值 SCAN_DOT_TYPES）与法宝图标指纹（SCAN_FP_REFS，同 类型+形状+红/普通 多法宝时由样例校准） -->
+		<!-- 键 `类型|形状|red|normal`；sig 为每格 4×4 块图标像素均值（不足记 null，供精细匹配），sigLegacy 为每格 2×2 块全像素均值 RGB，与 scanPieceFp 输出一致，当前匹配用 sigLegacy -->
+		<!-- 匹配差值超过 maxDiff 时不猜名，低置信交人工选择 -->
+		<script src="./data/scan-fp-refs.js"></script>
+		<!-- 截图识别核心（棋盘定位 / 切格 / 特征与签名 / 棋子识别，与 tools/法宝图标指纹提取工具.html 共用） -->
+		<script src="script/scan-core.js"></script>
+		<!-- OpenCV 懒加载器（与 tools/法宝图标指纹提取工具.html 共用） -->
+		<script src="script/opencv-loader.js"></script>
+		<script src="script/main.index.js"></script>
+	</body>
+</html>

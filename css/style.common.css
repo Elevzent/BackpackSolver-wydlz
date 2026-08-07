@@ -1,0 +1,286 @@
+/*
+ * 共用样式：index.html（style.main.css）与法宝图标指纹提取工具（style.fp.css）的公共变量、基础重置与通用组件。
+ * 须在页面样式之前引入，页面样式只放各自特有规则。
+ */
+:root {
+	/* 法宝品质色（绿/蓝/紫/金/红）与禁用格占位灰 */
+	--color-red: #c87163;
+	--color-blue: #81bcc6;
+	--color-gold: #efbb81;
+	--color-purple: #c9a0c9;
+	--color-green: #99b594;
+	--color-gray: #a0a0a0;
+
+	/* 界面主题色 */
+	--bg: #f3f4f6;
+	--panel-bg: #ffffff;
+	--border: #e5e7eb;
+	--border-strong: #d0d5dd;
+	--text: #333840;
+	--muted: #6b7280;
+	--accent: #4f7cff;
+	--accent-hover: #3b64d8;
+
+	/* 其余颜色统一收拢于此，全站只允许引用变量 */
+	--white: #ffffff;
+	--accent-ring: rgba(79, 124, 255, 0.15);
+	--panel-shadow: rgba(0, 0, 0, 0.08);
+	--danger-border: #e5b3ad;
+	--danger-bg: #fdf0ee;
+	--table-head-bg: #f9fafb;
+	--table-row-line: #f0f1f3;
+	--table-row-alt: #fafbfc;
+	--table-row-hover: #f2f6ff;
+	--shape-cell-line: #eceef1;
+	--cell-num-shadow: rgba(0, 0, 0, 0.35);
+	--legend-chip-border: rgba(0, 0, 0, 0.15);
+	--tooltip-bg: rgba(17, 24, 39, 0.92);
+	--cell-inner-line: rgba(255, 255, 255, 0.45);
+	--cell-outline: #4b5563;
+
+	/* 页头向内容区的浅色渐变过渡（颜色与高度） */
+	--header-fade: rgba(255, 255, 255, 0.4);
+	--header-fade-h: 100vh;
+}
+
+* {
+	box-sizing: border-box;
+	margin: 0;
+	padding: 0;
+}
+
+/* hidden 属性需压过 .cfg-field 等类上的 display 设置 */
+[hidden] {
+	display: none !important;
+}
+
+body {
+	font-family:
+		-apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+	background: var(--bg);
+	color: var(--text);
+	padding: 1.5em;
+	/* 禁用双击放大（保留平移与捏合以外的手势），去掉 300ms 点击延迟 */
+	touch-action: manipulation;
+}
+
+/* 面板 */
+.panel {
+	background: var(--panel-bg);
+	border-radius: 10px;
+	box-shadow: 0 1px 3px var(--panel-shadow);
+}
+
+/* 表单控件 */
+input[type="number"],
+input[type="text"],
+select {
+	padding: 0.3em 0.5em;
+	border: 1px solid var(--border-strong);
+	border-radius: 6px;
+	font-size: 0.9em;
+	background: var(--white);
+	color: inherit;
+	transition:
+		border-color 0.15s,
+		box-shadow 0.15s;
+}
+
+input[type="number"]:focus,
+input[type="text"]:focus,
+select:focus {
+	outline: none;
+	border-color: var(--accent);
+	box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+/* iOS Safari 聚焦 <16px 输入控件会自动放大页面：触屏设备把可输入控件字号抬到 16px（与 viewport maximum-scale 双保险） */
+@media (pointer: coarse) {
+	input[type="number"],
+	input[type="text"],
+	select,
+	textarea {
+		font-size: 16px;
+	}
+}
+
+/* 按钮 */
+button {
+	padding: 0.35em 1em;
+	border: 1px solid var(--border-strong);
+	border-radius: 6px;
+	font-size: 0.9em;
+	background: var(--white);
+	color: var(--text);
+	cursor: pointer;
+	white-space: nowrap;
+	transition:
+		background 0.15s,
+		border-color 0.15s,
+		color 0.15s;
+}
+
+button:hover {
+	border-color: var(--accent);
+	color: var(--accent);
+}
+
+.btn-primary {
+	padding: 0.25em 0.9em;
+	background: var(--accent);
+	border-color: var(--accent);
+	color: var(--white);
+}
+
+.btn-primary:hover {
+	background: var(--accent-hover);
+	border-color: var(--accent-hover);
+	color: var(--white);
+}
+
+button:disabled,
+input:disabled,
+select:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+button:disabled:hover {
+	border-color: var(--border-strong);
+	color: var(--text);
+}
+
+.btn-primary:disabled,
+.btn-primary:disabled:hover {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: var(--white);
+}
+
+/* 删除等危险操作按钮：红色主题；与 .btn-primary 搭配使用，位置须在其后以覆盖主色 */
+.btn-danger {
+	background: var(--white);
+	border-color: var(--danger-border);
+	color: var(--color-red);
+}
+
+.btn-danger:hover {
+	background: var(--danger-bg);
+	border-color: var(--color-red);
+	color: var(--color-red);
+}
+
+/* 小号按钮：卡片头、浮层等紧凑场景 */
+.btn-sm {
+	font-size: 0.9em;
+	padding: 0.2em 0.7em;
+}
+
+/* 数量输入框 / 步进器 */
+.num-input {
+	width: 4em;
+	text-align: center;
+	/* 隐藏原生增减按钮（各浏览器表现不一，有的没有），统一用自定义步进器 */
+	appearance: textfield;
+	-moz-appearance: textfield;
+}
+
+.num-input::-webkit-outer-spin-button,
+.num-input::-webkit-inner-spin-button {
+	-webkit-appearance: none;
+	margin: 0;
+}
+
+/* 自定义数量步进器：− 输入框 + 三段拼接成一个整体 */
+.num-stepper {
+	display: inline-flex;
+	align-items: stretch;
+}
+
+.num-stepper .step-btn {
+	padding: 0 0.55em;
+	user-select: none;
+	touch-action: manipulation;
+}
+
+.num-stepper .step-dec {
+	border-radius: 6px 0 0 6px;
+	border-right: 0;
+}
+
+.num-stepper .step-inc {
+	border-radius: 0 6px 6px 0;
+	border-left: 0;
+}
+
+.num-stepper .num-input {
+	width: 2.6em;
+	border-radius: 0;
+}
+
+/* 聚焦光圈压过两侧按钮边框 */
+.num-stepper .num-input:focus {
+	position: relative;
+	z-index: 1;
+}
+
+/* 表格 */
+/* 带边框圆角的滚动容器，overflow 由配合的类（.scroll-box / .table-wrap）控制 */
+.table-scroll {
+	border: 1px solid var(--border);
+	border-radius: 8px;
+}
+
+.table-scroll::-webkit-scrollbar {
+	width: 8px;
+}
+
+.table-scroll::-webkit-scrollbar-thumb {
+	background: var(--border-strong);
+	border-radius: 4px;
+}
+
+/* 通用数据表：吸附表头 + 细分隔线；对齐、斑马纹、行 hover 由各页面自定 */
+.table {
+	border-collapse: collapse;
+	width: 100%;
+}
+
+.table:has(.table-empty),
+.table:has(.table-empty) tbody {
+	height: 100%;
+}
+
+.table th {
+	position: sticky;
+	top: 0;
+	z-index: 1;
+	background: var(--table-head-bg);
+	color: var(--muted);
+	font-size: 0.85em;
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+.table td,
+.table th {
+	border-bottom: 1px solid var(--table-row-line);
+	padding: 0.55em 0.8em;
+	white-space: nowrap;
+}
+
+/* 悬浮提示 */
+/* 格内 hover 浮层（替代原生 title，无延迟即时跟随） */
+.cell-tip {
+	position: fixed;
+	z-index: 1000;
+	pointer-events: none;
+	background: var(--tooltip-bg);
+	color: var(--white);
+	font-size: 0.8em;
+	line-height: 1.6;
+	padding: 0.5em 0.8em;
+	border-radius: 6px;
+	white-space: pre-line;
+	max-width: 22em;
+}

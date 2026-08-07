@@ -1,0 +1,790 @@
+/* 变量、基础重置与通用组件见 css/style.common.css，本文件只放指纹提取工具特有规则 */
+
+.page {
+	max-width: 1400px;
+	margin: 0 auto;
+	display: flex;
+	flex-direction: column;
+	gap: 1em;
+}
+
+h1 {
+	font-size: 1.1em;
+}
+
+/* 顶部使用说明：一行总起 + 分条列表，卡片风格与 .panel 协调 */
+.usage {
+	background: var(--panel-bg);
+	border-radius: 10px;
+	box-shadow: 0 1px 3px var(--panel-shadow);
+	padding: 0.8em 1em;
+	font-size: 0.88em;
+	line-height: 1.7;
+	color: var(--muted);
+}
+
+.usage .usage-lead {
+	color: var(--text);
+	margin-bottom: 0.3em;
+}
+
+.usage ul {
+	padding-left: 1.4em;
+}
+
+.usage li {
+	margin: 0.15em 0;
+}
+
+.usage b {
+	color: var(--text);
+	font-weight: 600;
+}
+
+/* Node 端速查命令：等宽 + 单击全选，便于复制 */
+.usage code {
+	background: rgba(0, 0, 0, 0.06);
+	padding: 0.1em 0.4em;
+	border-radius: 4px;
+	font-size: 0.92em;
+	user-select: all;
+}
+
+.panel {
+	padding: 1em;
+	width: 100%;
+	height: 100%;
+}
+
+.bar {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.5em 0.9em;
+	font-size: 0.9em;
+	color: var(--muted);
+}
+
+/* SCAN_DOT_TYPES 变更后的模型重训提醒条（配色同 .tag-warn） */
+.retrain-bar {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.5em 0.9em;
+	font-size: 0.9em;
+	line-height: 1.7;
+	border: 1px solid #b87514;
+	background: #fdf3e7;
+	color: #b87514;
+}
+
+.retrain-bar code {
+	background: rgba(184, 117, 20, 0.12);
+	padding: 0.15em 0.5em;
+	border-radius: 6px;
+	font-size: 0.92em;
+	user-select: all;
+}
+
+input[type="number"] {
+	width: 4em;
+	text-align: center;
+}
+
+/* 切换型按钮（调整边界）激活态 */
+.btn-toggle.active {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: var(--white);
+}
+
+.status {
+	font-size: 0.88em;
+	color: var(--muted);
+}
+
+.status.err {
+	color: var(--color-red);
+}
+
+.status.ok {
+	color: #4d8a52;
+}
+
+/* 并行线程设置：顶部状态条右侧，不显眼 */
+.parallel-ctl {
+	margin-left: auto;
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4em;
+	font-size: 0.88em;
+	color: var(--muted);
+}
+
+.parallel-ctl input[type="number"] {
+	width: 3.2em;
+}
+
+.main {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	gap: 1em;
+	align-items: start;
+}
+
+.canvas-wrap {
+	border: 1px dashed var(--border-strong);
+	border-radius: 8px;
+	overflow: auto;
+	max-height: 70vh;
+}
+
+/* 未载入截图时的占位：正方形虚线框 */
+.canvas-wrap.empty {
+	aspect-ratio: 1 / 1;
+}
+
+.board-canvas {
+	display: block;
+	max-width: 100%;
+	cursor: crosshair;
+	margin: 0 auto;
+}
+
+.hint {
+	font-size: 0.85em;
+	color: var(--muted);
+	padding: 0.6em 0.2em 0;
+	text-align: left;
+}
+
+.cell-grid {
+	display: grid;
+	gap: 2px;
+	width: max-content;
+	margin: 0 auto;
+	grid-template-columns: repeat(var(--cols), 1fr);
+}
+
+.cell {
+	width: 60px;
+	height: 60px;
+	border: 2px solid var(--border);
+	border-radius: 4px;
+	overflow: hidden;
+	cursor: pointer;
+	position: relative;
+}
+
+.cell canvas {
+	display: block;
+	width: 100%;
+	height: 100%;
+}
+
+.cell.selected {
+	border-color: var(--accent);
+	box-shadow: 0 0 0 2px var(--accent-ring);
+}
+
+.cell.selected::after {
+	content: "✓";
+	position: absolute;
+	right: 2px;
+	bottom: 0;
+	font-size: 12px;
+	font-weight: 700;
+	color: var(--accent);
+	text-shadow: 0 0 2px var(--white);
+}
+
+/* 真值标注：已被其他棋子占用的格子（不可选，角标为棋子序号） */
+.cell.occupied {
+	border-color: var(--color-gold);
+	cursor: not-allowed;
+}
+
+.cell.occupied::after {
+	content: attr(data-occ);
+	position: absolute;
+	right: 2px;
+	top: 0;
+	font-size: 12px;
+	font-weight: 700;
+	text-shadow: 0 0 2px var(--white);
+	color: #b87514;
+	background-color: var(--white);
+	width: 20%;
+	height: 20%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 50%;
+	opacity: 0.8;
+}
+
+/* 真值标注：锚点格（元素圆点所在格）左上角标记 */
+.cell.anchor::before {
+	content: "";
+	position: absolute;
+	left: 3px;
+	top: 3px;
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	background: var(--accent);
+	box-shadow: 0 0 2px var(--white);
+	z-index: 1;
+}
+
+.cell-warn {
+	font-size: 0.82em;
+	color: var(--color-gold);
+	padding-top: 0.5em;
+}
+
+/* hover 高亮覆盖层：统一基类（绝对定位于格内、不响应鼠标） */
+.cell .hl-ov {
+	position: absolute;
+	pointer-events: none;
+	z-index: 3;
+}
+
+/* 棋子范围白色粗线外轮廓：整格覆盖层按边设 border（内邻接边宽 0），画在格子图像上方（box-shadow 会被 canvas 盖住，故用真边框 + 深色投影描边） */
+.cell .hl-ov.edge {
+	inset: 0;
+	border: 0 solid #fff;
+	border-radius: 2px;
+	filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.8));
+}
+
+/* 元素徽标（锚点格左上圆点）与数字标（右下圆）蓝色半透明盖位，位置对齐 SCAN_REC 采样位（dot 圆心 0.135 / badge 圆心 0.845 格宽，直径取 0.2） */
+.cell .hl-ov.dot,
+.cell .hl-ov.badge {
+	width: 20%;
+	height: 20%;
+	border-radius: 50%;
+	background: rgba(60, 120, 255, 0.5);
+}
+
+.cell .hl-ov.dot {
+	left: 3.5%;
+	top: 3.5%;
+}
+
+.cell .hl-ov.badge {
+	right: 5.5%;
+	bottom: 5.5%;
+}
+
+.form {
+	margin-top: 1em;
+	border-top: 1px solid var(--border);
+	padding-top: 1em;
+	display: flex;
+	flex-direction: column;
+	gap: 0.7em;
+	font-size: 0.9em;
+}
+
+.form-row {
+	display: flex;
+	align-items: center;
+	gap: 0.6em;
+	flex-wrap: wrap;
+}
+
+.form-row label {
+	color: var(--muted);
+	white-space: nowrap;
+}
+
+#shapeInfo,
+#annShapeInfo {
+	font-weight: 600;
+}
+
+#shapeInfo.unknown,
+#annShapeInfo.unknown {
+	color: var(--color-red);
+}
+
+#pieceThumb {
+	border: 1px solid var(--border-strong);
+	border-radius: 4px;
+	background: var(--white);
+}
+
+.entries {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5em;
+}
+
+.entry {
+	display: flex;
+	align-items: center;
+	gap: 0.8em;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	padding: 0.5em 0.8em;
+	font-size: 0.88em;
+}
+
+.entry img {
+	max-height: 48px;
+	max-width: 120px;
+	border: 1px solid var(--border-strong);
+	border-radius: 4px;
+}
+
+.entry .meta {
+	flex: 1;
+	min-width: 0;
+}
+
+.entry .meta .sub {
+	color: var(--muted);
+	font-size: 0.9em;
+}
+
+.entry .merge-note {
+	color: #4d8a52;
+}
+
+.entry .split-note {
+	color: var(--color-gold);
+}
+
+#output,
+#annOutput {
+	width: 100%;
+	min-height: 14em;
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 0.82em;
+	line-height: 1.55;
+	border: 1px solid var(--border-strong);
+	border-radius: 8px;
+	padding: 0.8em;
+	resize: vertical;
+	white-space: pre;
+}
+
+/* 表格滚动容器：边框圆角由 .table-scroll（style.common.css）提供 */
+.table-wrap {
+	max-height: 26em;
+	overflow: auto;
+}
+
+/* 各数据表统一用 .table 组件（style.common.css），这里只收紧密度的字号 */
+#galTable,
+#blockTable,
+#grpTable,
+#replayTable,
+#dcTable {
+	font-size: 0.88em;
+}
+
+#galTable img {
+	max-height: 48px;
+	max-width: 96px;
+	border: 1px solid var(--border-strong);
+	border-radius: 4px;
+	vertical-align: middle;
+	cursor: zoom-in;
+}
+
+/* 图库缩略图放大预览浮层 */
+.preview-mask {
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.75);
+	z-index: 200;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 0.6em;
+	cursor: zoom-out;
+}
+
+.preview-mask[hidden] {
+	display: none;
+}
+
+.preview-mask img {
+	max-width: 92vw;
+	max-height: 86vh;
+	border-radius: 6px;
+	box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+}
+
+.preview-mask span {
+	color: #fff;
+	font-size: 0.9em;
+}
+
+/* 同一歧义组交替底色，便于分组查看（名录表专属：grp-alt 带分组语义） */
+#blockTable tr.grp-alt td {
+	background: #faf7f2;
+}
+
+/* 冲突组表的 grp-alt 只是隔行斑马（无分组语义，渲染时按奇偶行加） */
+#grpTable tr.grp-alt td {
+	background: #faf7f2;
+}
+
+.tag {
+	display: inline-block;
+	padding: 0.1em 0.5em;
+	border-radius: 6px;
+	font-size: 0.85em;
+}
+
+.tag-amb {
+	background: #fdecea;
+	color: var(--color-red);
+}
+
+.tag-ok {
+	background: #eef6ee;
+	color: #4d8a52;
+}
+
+.tag-warn {
+	background: #fdf3e7;
+	color: #b87514;
+}
+
+.tag-muted {
+	background: #f3f4f6;
+	color: var(--muted);
+}
+
+/* 组级提取页：样本卡片与差分报告 */
+.gx-grp-head {
+	margin: 0.9em 0 0.35em;
+	font-weight: 600;
+}
+
+.gx-card {
+	display: inline-block;
+	vertical-align: top;
+	margin: 0 0.6em 0.6em 0;
+	padding: 0.4em;
+	border: 1px solid var(--border-strong);
+	border-radius: 6px;
+	background: #fff;
+	text-align: center;
+	font-size: 0.85em;
+}
+
+.gx-card.excluded {
+	opacity: 0.4;
+}
+
+.gx-card canvas {
+	display: block;
+	margin: 0 auto 0.3em;
+	image-rendering: pixelated;
+	max-width: 128px;
+}
+
+.gx-card .gx-src {
+	color: var(--muted);
+	font-size: 0.9em;
+}
+
+/* 元素校准采样确认卡片（结构复用 .gx-card / .gx-grp-head，一格一卡：锚点格切图放大显示 + 操作栏） */
+.dc-card canvas {
+	width: 132px;
+	cursor: crosshair;
+	touch-action: none; /* 指针拖环，禁触摸滚动接管 */
+}
+
+.dc-card .dc-bar {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 2px;
+	justify-content: center;
+	max-width: 140px;
+	margin: 0.25em auto 0;
+}
+
+.dc-card .dc-bar button {
+	padding: 0 0.35em;
+	font-size: 0.85em;
+	line-height: 1.6;
+}
+
+.dc-card .dc-type.on {
+	font-weight: 700;
+	box-shadow: inset 0 0 0 1.5px currentColor;
+}
+
+.gx-heat {
+	image-rendering: pixelated;
+	border: 1px solid var(--border-strong);
+	background: #fff;
+	vertical-align: middle;
+}
+
+/* 形状列迷你图示（风格同 index.html shape2Html 的网格） */
+.shape-mini {
+	display: inline-grid;
+	gap: 1px;
+	padding: 1px;
+	background: var(--border-strong);
+	border-radius: 3px;
+	vertical-align: middle;
+	margin-right: 0.5em;
+}
+
+.shape-mini i {
+	width: 9px;
+	height: 9px;
+}
+
+.shape-mini i.on-n {
+	background: var(--color-green);
+}
+
+.shape-mini i.on-r {
+	background: var(--color-red);
+}
+
+/* 回放验证结果表 */
+#replayTable img {
+	max-height: 48px;
+	max-width: 96px;
+	border: 1px solid var(--border-strong);
+	border-radius: 4px;
+	vertical-align: middle;
+}
+
+/* 提取弹窗 */
+.modal-mask {
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.45);
+	z-index: 100;
+	overflow: auto;
+	padding: 2vh 1.5em;
+}
+
+.modal {
+	max-width: 1400px;
+	margin: 0 auto;
+	background: var(--bg);
+	border-radius: 12px;
+	padding: 1em;
+	display: flex;
+	flex-direction: column;
+	gap: 1em;
+}
+
+.modal-head {
+	display: flex;
+	align-items: center;
+	gap: 0.8em;
+	flex-wrap: wrap;
+	background: var(--panel-bg);
+	border-radius: 10px;
+	box-shadow: 0 1px 3px var(--panel-shadow);
+	padding: 0.8em 1em;
+}
+
+/* 元素色校准面板 */
+#calPanel {
+	margin-top: 1em;
+	border-top: 1px solid var(--border);
+	padding-top: 1em;
+	display: flex;
+	flex-direction: column;
+	gap: 0.7em;
+	font-size: 0.9em;
+}
+
+#calRanges .range-row {
+	display: flex;
+	align-items: center;
+	gap: 0.6em;
+	padding: 0.2em 0;
+}
+
+#calRanges .range-row.conflict {
+	color: var(--color-red);
+}
+
+/* 元素校准 tab：hue 直方图与分类型统计表 */
+#dcHist {
+	display: block;
+	width: 100%;
+	max-width: 720px;
+	border: 1px solid var(--border-strong);
+	border-radius: 8px;
+	background: var(--white);
+	cursor: crosshair;
+}
+
+/* 直方图 hover 浮层提示（fixed 定位，脚本按鼠标位置放置） */
+.dc-hist-tip {
+	position: fixed;
+	z-index: 150;
+	max-width: 16em;
+	padding: 0.4em 0.6em;
+	font-size: 12px;
+	line-height: 1.55;
+	color: var(--text);
+	background: var(--white);
+	border: 1px solid var(--border-strong);
+	border-radius: 6px;
+	box-shadow: 0 4px 14px rgba(15, 23, 42, 0.18);
+	pointer-events: none;
+}
+
+.dc-hist-tip div {
+	display: flex;
+	align-items: center;
+	gap: 0.4em;
+	white-space: nowrap;
+}
+
+.dc-hist-tip i {
+	width: 0.7em;
+	height: 0.7em;
+	border-radius: 2px;
+	flex: none;
+}
+
+.dc-hist-tip .dc-hist-tip-head {
+	font-weight: 600;
+}
+
+.dc-hist-tip .dc-hist-tip-none {
+	color: var(--muted);
+}
+
+.dc-hist-tip .dc-hist-tip-warn {
+	color: var(--color-red);
+}
+
+#dcTable tr.dc-overlap td {
+	color: var(--color-red);
+}
+
+@media (max-width: 1024px) {
+	.main {
+		grid-template-columns: 1fr;
+	}
+
+	.cell-grid {
+		width: 100%;
+	}
+
+	.cell-grid .cell {
+		width: 100%;
+		height: 100%;
+	}
+}
+
+/* tab 结构 */
+.tab-bar {
+	display: flex;
+	gap: 0.5em;
+}
+
+.tab-page {
+	display: flex;
+	flex-direction: column;
+	gap: 1em;
+}
+
+/* 回测面板：每图卡片 / 汇总 / 回归对比 / 失败明细 */
+#btCards {
+	display: flex;
+	flex-direction: column;
+	gap: 1em;
+}
+
+.bt-card {
+	display: flex;
+	gap: 1em;
+	align-items: flex-start;
+	flex-wrap: wrap;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	padding: 0.7em;
+}
+
+.bt-card canvas {
+	border: 1px solid var(--border-strong);
+	border-radius: 4px;
+	cursor: crosshair;
+	max-width: 100%;
+}
+
+.bt-card .bt-meta {
+	flex: 1;
+	min-width: 300px;
+	display: flex;
+	flex-direction: column;
+	gap: 0.5em;
+}
+
+.bt-metrics {
+	border-collapse: collapse;
+	font-size: 0.85em;
+	width: max-content;
+}
+
+.bt-metrics th,
+.bt-metrics td {
+	padding: 0.2em 0.55em;
+	border-bottom: 1px solid var(--border);
+	text-align: left;
+	white-space: nowrap;
+}
+
+.bt-legend {
+	font-size: 0.8em;
+	color: var(--muted);
+	display: flex;
+	gap: 0.9em;
+	flex-wrap: wrap;
+}
+
+.bt-legend i {
+	display: inline-block;
+	width: 0.9em;
+	height: 0.9em;
+	border-radius: 2px;
+	margin-right: 0.25em;
+	vertical-align: -0.12em;
+}
+
+.bt-cell-detail {
+	font-size: 0.85em;
+	color: var(--muted);
+	min-height: 1.6em;
+	white-space: pre-line;
+}
+
+.bt-block {
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	padding: 0.7em;
+	font-size: 0.88em;
+}
+
+.bt-block pre {
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 0.92em;
+	white-space: pre-wrap;
+	margin-top: 0.4em;
+}
+
+.bt-regress {
+	color: var(--color-red);
+	font-weight: 600;
+}

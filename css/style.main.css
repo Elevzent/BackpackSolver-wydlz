@@ -1,0 +1,1313 @@
+/* 变量、基础重置与通用组件见 css/style.common.css，本文件只放 index.html 特有规则 */
+
+body {
+	/* 顶部一层限定高度的浅色渐变带，淡出到页面底色，形成页头的柔和过渡 */
+	background:
+		linear-gradient(to bottom, var(--header-fade), transparent) top / 100%
+			var(--header-fade-h) no-repeat,
+		var(--bg);
+}
+
+.c-red {
+	color: var(--color-red);
+}
+
+.c-blue {
+	color: var(--color-blue);
+}
+
+.c-gold {
+	color: var(--color-gold);
+}
+
+.c-purple {
+	color: var(--color-purple);
+}
+
+.c-green {
+	color: var(--color-green);
+}
+
+.c-gray {
+	color: var(--color-gray);
+}
+
+/* 布局 */
+main {
+	/* 屏幕高度减去约露出区，让第二屏在第一屏底部露出一条边，引导用户下滚 */
+	--screen-h: calc(100vh - 10em);
+	display: grid;
+	grid-template-columns: repeat(6, 1fr);
+	grid-template-rows: var(--screen-h) minmax(var(--screen-h), auto);
+	gap: 1.5em;
+	max-width: 1400px;
+	margin: 0 auto;
+}
+
+/* 第一屏两个面板等宽对半分，第二屏三个面板等宽 */
+.left-panel,
+.selected-block {
+	grid-column: span 3;
+}
+
+.board-panel,
+.layout-panel,
+.log-panel {
+	grid-column: span 2;
+}
+
+.panel {
+	padding: 1.25em;
+	min-width: 0;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.block-select {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	min-height: 0;
+}
+
+.panel-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 1em;
+	/* 统一各卡片头部高度：内容区最小高度与右侧控件高度一致 */
+	min-height: 2.8em;
+	padding-bottom: 0.9em;
+	border-bottom: 1px solid var(--border);
+}
+
+/* 卡片头右侧控件统一高度（select 与按钮渲染高度不同，需显式固定） */
+.panel-header button,
+.panel-header select {
+	height: 2em;
+	box-sizing: border-box;
+	padding: 0 1em;
+}
+
+/* 标题左侧的 accent 竖条只给标题 span，头部统计等其他 span 不带 */
+.panel-header > span:not(.header-stats) {
+	font-size: 1.05em;
+	font-weight: 600;
+	padding-left: 0.55em;
+	border-left: 4px solid var(--accent);
+	line-height: 1.2;
+	white-space: nowrap;
+}
+
+.type-select-row {
+	display: flex;
+	align-items: center;
+	gap: 0.5em;
+	font-size: 0.9em;
+	color: var(--muted);
+	white-space: nowrap;
+}
+
+/* 表格 */
+.scroll-box {
+	flex: 1;
+	min-height: 0;
+	overflow: auto;
+	margin-top: 1em;
+}
+
+.table th,
+.table td {
+	text-align: center;
+}
+
+.table tbody tr:nth-child(even) {
+	background: var(--table-row-alt);
+}
+
+.table tbody tr:hover {
+	background: var(--table-row-hover);
+}
+
+.block-table td p,
+.selected-block-table td p {
+	line-height: 1.5;
+}
+
+.block-table th:nth-child(1),
+.block-table td:nth-child(1),
+.block-table td:nth-child(3) {
+	text-align: left;
+}
+
+.selected-block-table td:nth-child(2),
+.selected-block-table td:nth-child(4) {
+	text-align: left;
+}
+
+/* 空表占位：.table td 选择器优先级更高，对齐与留白需 !important 压过 */
+.table-empty {
+	text-align: center !important;
+	color: var(--muted);
+	font-size: 0.9em;
+	letter-spacing: 0.05em;
+	padding: 3em 1em !important;
+	height: 100%;
+}
+
+/* 形状 */
+.shape-wrapper {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+}
+
+.shape-box {
+	display: grid;
+	border: 1px solid var(--border-strong);
+	border-radius: 3px;
+	overflow: hidden;
+}
+
+.shape-item {
+	height: 1em;
+	width: 1em;
+	border: 1px solid var(--shape-cell-line);
+}
+
+.shape-item.empty {
+	background-color: transparent;
+}
+
+.shape-item.c-green {
+	background-color: var(--color-green);
+}
+
+.shape-item.c-blue {
+	background-color: var(--color-blue);
+}
+
+.shape-item.c-purple {
+	background-color: var(--color-purple);
+}
+
+.shape-item.c-gold {
+	background-color: var(--color-gold);
+}
+
+.shape-item.c-red {
+	background-color: var(--color-red);
+}
+
+.block-quantity-select {
+	cursor: pointer;
+	font-weight: 600;
+}
+
+.block-quantity-select.disabled {
+	cursor: not-allowed;
+	border-color: transparent;
+	background: transparent;
+}
+
+/* 棋盘 */
+.control-row {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	font-size: 0.9em;
+	color: var(--muted);
+}
+
+.board-config-row,
+.weight-row {
+	gap: 0.5em 0.75em;
+	margin-top: 1em;
+}
+
+/* 标签与输入框成对不换行，空间不足时整对换到下一行 */
+.cfg-field {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5em;
+	flex: none;
+	white-space: nowrap;
+}
+
+.board-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: 2em;
+}
+
+.board-hint {
+	font-size: 0.85em;
+	min-width: 0;
+}
+
+.board-hint p.active {
+	color: var(--text);
+}
+
+.board-scroll {
+	display: flex;
+}
+
+.board-grid {
+	display: grid;
+	gap: 2px;
+	width: max-content;
+	height: max-content;
+	/* flex 容器内用 margin:auto 居中，棋盘超出时仍可正常滚动 */
+	margin: auto;
+}
+
+.board-cell {
+	width: 2em;
+	height: 2em;
+	border: 1px solid var(--border-strong);
+	border-radius: 3px;
+	background: var(--white);
+	cursor: pointer;
+	/* 布局棋盘的格内编号在格中居中 */
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	transition:
+		background 0.15s,
+		border-color 0.15s;
+}
+
+.board-cell:hover {
+	border-color: var(--accent);
+}
+
+.board-cell.disabled {
+	background: var(--color-gray);
+	border-color: var(--color-gray);
+}
+
+/* 实时布局的棋盘为只读展示，无指针与悬停态 */
+.layout-grid .board-cell {
+	cursor: default;
+}
+
+.layout-grid .board-cell:hover {
+	border-color: var(--border-strong);
+}
+
+/* 实时布局结果 / 计算日志 */
+/* 模式 / 线程 / 耗时上限设置，位于布局棋盘与图例下方 */
+.layout-controls {
+	gap: 0.5em 0.9em;
+	margin-top: 0.9em;
+}
+
+/* 填满优先 / 属性优先滑动开关：整行可点，滑块随选中态移动 */
+.switch-field {
+	cursor: pointer;
+	user-select: none;
+}
+
+.switch-field input {
+	display: none;
+}
+
+.switch-track {
+	position: relative;
+	width: 2.4em;
+	height: 1.3em;
+	border-radius: 999px;
+	background: var(--border-strong);
+	transition: background 0.2s;
+	flex: none;
+}
+
+.switch-track::after {
+	content: "";
+	position: absolute;
+	top: 0.15em;
+	left: 0.15em;
+	width: 1em;
+	height: 1em;
+	border-radius: 50%;
+	background: var(--white);
+	box-shadow: 0 1px 2px var(--panel-shadow);
+	transition: left 0.2s;
+}
+
+.switch-field input:checked + .switch-track {
+	background: var(--accent);
+}
+
+.switch-field input:checked + .switch-track::after {
+	left: 1.25em;
+}
+
+.switch-field input:disabled + .switch-track {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.cell-num {
+	font-size: 0.62em;
+	font-weight: 700;
+	line-height: 1;
+	color: var(--white);
+	text-shadow: 0 1px 2px var(--cell-num-shadow);
+	pointer-events: none;
+}
+
+/* 布局棋盘下方图例：编号 -> 法宝全名，自动换行平铺 */
+.layout-legend {
+	margin-top: 0.9em;
+	border-top: 1px solid var(--border);
+	padding-top: 0.8em;
+	max-height: 10em;
+	overflow: auto;
+	font-size: 0.85em;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.35em 1.2em;
+}
+
+.layout-legend:empty {
+	display: none;
+}
+
+.legend-item {
+	display: flex;
+	align-items: center;
+	gap: 0.5em;
+}
+
+.legend-chip {
+	width: 0.9em;
+	height: 0.9em;
+	border-radius: 3px;
+	flex: none;
+	border: 1px solid var(--legend-chip-border);
+}
+
+.legend-name {
+	font-weight: 600;
+}
+
+.legend-meta {
+	color: var(--muted);
+}
+
+/* 已选列表：头部统计（已选件数 + 当前格数/总格数），紧跟标题右侧 */
+.header-stats {
+	margin-right: auto;
+	font-size: 0.9em;
+	font-weight: 400;
+	color: var(--muted);
+	white-space: nowrap;
+}
+
+.header-stats b {
+	color: var(--text);
+	font-weight: 600;
+}
+
+/* 格数状态：不满蓝、刚好绿、超出黄 */
+.stats-cells.stats-low {
+	color: var(--color-blue);
+}
+
+.stats-cells.stats-full {
+	color: var(--color-green);
+}
+
+.stats-cells.stats-over {
+	color: var(--color-gold);
+}
+
+/* 已选列表：本地方案缓存操作行 */
+.preset-row {
+	gap: 0.5em;
+	margin-top: 0.9em;
+}
+
+.preset-select {
+	max-width: 16em;
+}
+
+.layout-controls .calc-btn {
+	margin-left: auto;
+}
+
+/* 回溯历史最优时，实时布局面板闪烁提示 */
+.layout-panel.recall-flash {
+	animation: recall-flash 0.8s;
+}
+
+@keyframes recall-flash {
+	0% {
+		box-shadow: 0 0 0 4px var(--accent-ring);
+	}
+	100% {
+		box-shadow: 0 1px 3px var(--panel-shadow);
+	}
+}
+
+/* 计算日志：限制最大高度，超出内部滚动 */
+.log-scroll {
+	max-height: calc(var(--screen-h) - 10em);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	padding: 0.6em 0.8em;
+	font-size: 0.85em;
+	line-height: 1.7;
+}
+
+.log-status {
+	position: sticky;
+	top: -0.6em;
+	background: var(--table-head-bg);
+	border-bottom: 1px solid var(--border);
+	margin: -0.6em -0.8em 0.4em;
+	padding: 0.4em 0.8em;
+	color: var(--muted);
+	font-weight: 600;
+}
+
+.log-line {
+	white-space: pre-wrap;
+	word-break: break-all;
+}
+
+.log-line.log-best {
+	color: var(--accent);
+	font-weight: 600;
+}
+
+.log-line.log-sys {
+	color: var(--muted);
+}
+
+/* 页头 */
+/* 页头做成纯文字行：无底色无边框，标题、一句话简介、流程提示同行排布 */
+.page-header {
+	max-width: 1400px;
+	margin: 0 auto 1.2em;
+	display: flex;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: 0.4em 1.2em;
+	padding: 0 0.25em;
+}
+
+.page-header h1 {
+	font-size: 1.05em;
+	font-weight: 600;
+	line-height: 1.2;
+	white-space: nowrap;
+}
+
+.header-intro,
+.header-flow {
+	color: var(--muted);
+	font-size: 0.85em;
+	line-height: 1.6;
+}
+
+/* 流程提示靠右，步骤间箭头用浅灰，尽量不抢眼 */
+.header-flow {
+	margin-left: auto;
+}
+
+.flow-arrow {
+	color: var(--border-strong);
+	margin: 0 0.45em;
+}
+
+/* 截图导入弹窗 */
+.scan-modal {
+	position: fixed;
+	inset: 0;
+	z-index: 60;
+	background: var(--tooltip-bg);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0;
+}
+
+/* 弹窗默认占满整个视口，不留边界 */
+.scan-panel {
+	box-sizing: border-box;
+	background: var(--panel-bg);
+	padding: 1.25em;
+	width: 100%;
+	height: 100%;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+	gap: 0.9em;
+}
+
+/* 预览区布局：横屏左预览 / 右结果表，竖屏上预览 / 下结果表（由 JS 切换） */
+.scan-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	display: flex;
+	flex-direction: row;
+	align-items: stretch;
+	gap: 0.9em;
+}
+
+/*
+ * 预览容器（边界框）：横屏占一半宽、等高拉伸，内容居中；
+ * container-type: size 让内部用 cq 单位按容器尺寸锁定画面比例
+ */
+.scan-media {
+	position: relative;
+	flex: none;
+	box-sizing: border-box;
+	width: calc(50% - 0.45em);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border: 1px dashed var(--border-strong);
+	border-radius: 8px;
+	container-type: size;
+	/* 截图原始宽高比（w / h），JS 在载入图片后写入，占位状态下用不到 */
+	--scan-ar: 0.316;
+}
+
+/* 竖屏（视口宽高比 <= 1）：上下排列，预览容器宽度占满、高度固定 40% */
+@media (max-aspect-ratio: 1/1) {
+	.scan-body {
+		flex-direction: column;
+	}
+
+	.scan-media {
+		width: 100%;
+		height: 40%;
+	}
+
+	.scan-result {
+		min-height: 0;
+	}
+}
+
+.scan-media.dragover {
+	outline: 2px dashed var(--accent);
+	outline-offset: 4px;
+	border-radius: 8px;
+}
+
+.scan-drop {
+	box-sizing: border-box;
+	width: 100%;
+	height: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 1em 0.5em;
+	text-align: center;
+	color: var(--muted);
+	font-size: 0.9em;
+	cursor: pointer;
+}
+
+.scan-drop:hover,
+.scan-media.dragover .scan-drop {
+	color: var(--accent);
+}
+
+/* 预览舞台：填满容器并将画面居中（hidden 收起由全局 [hidden] 规则兜底） */
+.scan-stage {
+	width: 100%;
+	height: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+/*
+ * 画面框：按截图原始宽高比 contain 进容器，元素盒即画面本身无留白，
+ * 画布拖拽坐标无需额外换算
+ */
+.scan-frame {
+	flex: none;
+	width: min(100cqw, calc(100cqh * var(--scan-ar)));
+	aspect-ratio: var(--scan-ar);
+}
+
+.scan-canvas {
+	display: block;
+	width: 100%;
+	height: 100%;
+	touch-action: none;
+}
+
+.scan-canvas.picking {
+	cursor: crosshair;
+}
+
+.scan-reupload-btn {
+	position: absolute;
+	top: 0.5em;
+	right: 0.5em;
+	z-index: 2;
+}
+
+.scan-status {
+	position: absolute;
+	left: 50%;
+	bottom: 0.6em;
+	transform: translateX(-50%);
+	z-index: 2;
+	max-width: 92%;
+	white-space: nowrap;
+	box-sizing: border-box;
+	padding: 0.3em 0.8em;
+	border-radius: 999px;
+	background: var(--tooltip-bg);
+	color: var(--white);
+	font-size: 0.8em;
+	text-align: center;
+	pointer-events: none;
+}
+
+.scan-status.ok {
+	color: var(--color-green);
+}
+
+.scan-status.err {
+	color: var(--color-red);
+}
+
+/* 预览图法宝 tooltip：跟随指针的浮层，fixed 定位全屏预览下同样生效；
+   z-index 须高于全屏预览层（.scan-media.fs-mode 为 80） */
+.scan-tip {
+	position: fixed;
+	z-index: 90;
+	white-space: nowrap;
+	padding: 0.3em 0.7em;
+	border-radius: 6px;
+	background: var(--tooltip-bg);
+	color: var(--white);
+	font-size: 0.85em;
+	pointer-events: none;
+}
+
+.scan-controls {
+	gap: 0.5em 0.75em;
+}
+
+.scan-edit-btn.active {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: var(--white);
+}
+
+/* 确认导入：底栏右端（主色样式复用 .btn-primary） */
+.scan-import-btn {
+	margin-left: auto;
+}
+
+/* 识别结果表格：随预览框等高，内容超出内部滚动 */
+.scan-result {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	overflow: hidden;
+}
+
+.scan-result-head {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 1em;
+	padding: 0.4em 0.75em;
+	border-bottom: 1px solid var(--border);
+	font-size: 0.85em;
+	color: var(--muted);
+}
+
+@media (max-width: 768px) {
+	.scan-result-head {
+		margin-bottom: 1em;
+	}
+}
+
+.scan-result-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+	font-size: 0.85em;
+	color: var(--muted);
+}
+
+/* 识别区为 0.85em 密度上下文，表头字号复位以抵消复合缩小（与 .scan-table 控件复位同理） */
+.scan-table th {
+	font-size: 1em;
+	z-index: 1;
+}
+
+.scan-thumb {
+	width: 32px;
+	height: 32px;
+	margin: 0 auto;
+	border: 1px dashed var(--border-strong);
+	border-radius: 4px;
+	overflow: hidden;
+	/* 多格缩略图宽高不一，盒内居中避免拉伸 */
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+/* 按画布原始宽高比 contain 进 32px 盒，不拉伸变形 */
+.scan-thumb canvas {
+	display: block;
+	max-width: 100%;
+	max-height: 100%;
+}
+
+/* 置信度按分数高低着色：高绿 / 中黄 / 低红（复用 root 品质色） */
+.scan-conf-high {
+	color: var(--color-green);
+	font-weight: 600;
+}
+
+.scan-conf-mid {
+	color: var(--color-gold);
+	font-weight: 600;
+}
+
+.scan-conf-low {
+	color: var(--color-red);
+	font-weight: 600;
+}
+
+/* 控件字号跟随弹窗缩放，宽度由各自类控制（.num-input / .scan-name-input），select 自适应内容 */
+.scan-table select,
+.scan-table input,
+.scan-table button {
+	font-size: 1em;
+}
+
+/* 类型列：窄下拉，未知态占位 */
+.scan-table .scan-type-select {
+	max-width: 4.5em;
+}
+
+/* 选格补录条：位于预览/结果区与底部控制栏之间，随选格补录模式显隐 */
+.scan-pick-bar {
+	flex: none;
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.5em 0.9em;
+	font-size: 0.85em;
+	color: var(--muted);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	padding: 0.5em 0.75em;
+}
+
+.scan-pick-note {
+	flex-basis: 100%;
+}
+
+.scan-pick-note:empty {
+	display: none;
+}
+
+.scan-pick-shape {
+	color: var(--text);
+	font-weight: 600;
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5em;
+}
+
+.scan-pick-shape.unknown {
+	color: var(--color-red);
+}
+
+.scan-pick-confirm-btn {
+	margin-left: auto;
+}
+
+.scan-pick-btn.active,
+.scan-fs-pick.active {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: var(--white);
+}
+
+/* 移动端补录模式：隐藏结果表，预览区放大占满剩余空间（方便点选格子） */
+@media (max-width: 768px) {
+	.scan-panel.picking .scan-result {
+		display: none;
+	}
+
+	.scan-panel.picking .scan-media {
+		flex: 1 1 auto;
+		width: auto;
+		height: auto;
+	}
+}
+
+/* 全屏预览 + 补录模式：补录条浮到预览层底部，全屏里直接完成补录 */
+.scan-panel.fs.picking .scan-pick-bar {
+	position: fixed;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	z-index: 90;
+	background: var(--panel-bg);
+	border-color: var(--border-strong);
+	border-radius: 8px 8px 0 0;
+	max-height: 45vh;
+	overflow: auto;
+}
+
+/* 预览全屏：预览容器提升为固定全视口层（iPhone Safari 无 Fullscreen API，用纯 CSS 实现） */
+.scan-fs-btn {
+	position: absolute;
+	top: 0.5em;
+	left: 0.5em;
+	z-index: 2;
+}
+
+.scan-media.fs-mode {
+	position: fixed;
+	inset: 0;
+	z-index: 80;
+	width: 100%;
+	height: 100%;
+	border: 0;
+	border-radius: 0;
+	background: var(--panel-bg);
+}
+
+/* 全屏时角落按钮收进顶部操作栏，避免重叠 */
+.scan-media.fs-mode .scan-fs-btn,
+.scan-media.fs-mode .scan-reupload-btn {
+	display: none;
+}
+
+/* 全屏操作栏：悬浮在画面顶部居中，按钮代理底部控制栏同名操作 */
+.scan-fs-toolbar {
+	position: absolute;
+	top: 0.5em;
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 3;
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 0.4em;
+	width: 100%;
+	max-width: 96%;
+}
+
+.scan-fs-edit.active {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: var(--white);
+}
+
+/* 名称列：可搜索下拉（输入过滤法宝目录） */
+.scan-name-combo {
+	position: relative;
+}
+
+.scan-table .scan-name-input {
+	max-width: 8em;
+}
+
+/* 下拉列表用 fixed 定位，避免被表格滚动区裁剪；层级高于全屏补录条（z-90） */
+.scan-name-list {
+	display: block;
+	position: fixed;
+	z-index: 95;
+	max-height: 14em;
+	overflow: auto;
+	background: var(--panel-bg);
+	border: 1px solid var(--border-strong);
+	border-radius: 6px;
+	box-shadow: 0 4px 12px var(--panel-shadow);
+	font-size: 0.95em;
+}
+
+.scan-name-opt {
+	padding: 0.3em 0.6em;
+	text-align: left;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.scan-name-opt:hover {
+	background: var(--accent);
+	color: var(--white);
+}
+
+.scan-name-opt.none {
+	color: var(--muted);
+	cursor: default;
+}
+
+.scan-name-opt.none:hover {
+	background: none;
+	color: var(--muted);
+}
+
+/* 响应式 */
+/* 平板：缩小间距与内边距，保持分屏结构 */
+@media (max-width: 1024px) {
+	body {
+		padding: 1em;
+		/* 渐变带随屏幕收窄降低高度 */
+		--header-fade-h: 9em;
+	}
+
+	main {
+		gap: 1em;
+		--screen-h: calc(100vh - 10em);
+	}
+
+	.panel {
+		padding: 1em;
+	}
+}
+
+/* 小平板 / 大手机：改为上下堆叠，表格限制高度内部滚动 */
+@media (max-width: 768px) {
+	main {
+		grid-template-columns: 1fr;
+		grid-template-rows: none;
+	}
+
+	/* 页头流程提示不再靠右，随整行自然换行 */
+	.header-flow {
+		margin-left: 0;
+	}
+
+	.panel {
+		grid-column: 1 / -1;
+		flex: none;
+		width: 100%;
+	}
+
+	.table-scroll {
+		flex: none;
+		max-height: 60vh;
+	}
+
+	.board-scroll {
+		max-height: 55vh;
+	}
+}
+
+/* 手机：更紧凑的字体与间距，表头允许换行堆叠 */
+@media (max-width: 480px) {
+	body {
+		padding: 0.75em;
+		font-size: 14px;
+		--header-fade-h: 6em;
+	}
+
+	.panel {
+		padding: 0.9em;
+		border-radius: 8px;
+	}
+
+	.panel-header {
+		flex-wrap: wrap;
+		gap: 0.6em;
+	}
+
+	.table-scroll {
+		max-height: 55vh;
+	}
+}
+
+/*
+ * 移动端卡片布局（≤768px）：窄屏下三张数据表由横向表格改为纵向卡片，表头隐藏，tr 变卡片容器，
+ * td 按 data-label（JS 渲染行时写入，仅需要字段名的列才有）生成标签；scan-table 用「缩略图居左放大」布局（方案甲）。桌面端不受影响。
+ */
+@media (max-width: 768px) {
+	.block-table,
+	.selected-block-table,
+	.scan-table,
+	.block-table tbody,
+	.selected-block-table tbody,
+	.scan-table tbody {
+		display: block;
+	}
+
+	.block-table thead,
+	.selected-block-table thead,
+	.scan-table thead {
+		display: none;
+	}
+
+	/* 卡片自带边框，外层容器去掉表格时代的边框，卡片直接浮在页面底色上 */
+	.table-scroll,
+	.scan-result {
+		border: none;
+	}
+
+	.block-table tbody tr,
+	.selected-block-table tbody tr,
+	.scan-table tbody tr {
+		margin-bottom: 0.75em;
+		border: 1px solid var(--border);
+		border-radius: 10px;
+		background: var(--panel-bg);
+		box-shadow: 0 1px 2px var(--panel-shadow);
+	}
+
+	/* 卡片模式取消斑马纹与行 hover 变色（底色由卡片统一提供） */
+	.block-table tbody tr:nth-child(even),
+	.selected-block-table tbody tr:nth-child(even),
+	.scan-table tbody tr:nth-child(even),
+	.block-table tbody tr:hover,
+	.selected-block-table tbody tr:hover,
+	.scan-table tbody tr:hover {
+		background: var(--panel-bg);
+	}
+
+	/* 法宝列表 / 已选列表：每个 td 一行「标签 + 值」 */
+	.block-table tbody tr,
+	.selected-block-table tbody tr {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		padding: 0.3em 0.8em;
+	}
+
+	.block-table td,
+	.selected-block-table td {
+		flex: 0 0 100%;
+		display: flex;
+		align-items: center;
+		gap: 0.8em;
+		padding: 0.5em 0;
+		border-bottom: 1px solid var(--table-row-line);
+		white-space: normal;
+		text-align: left;
+	}
+
+	/* 末尾操作行：按钮靠右，不再要分隔线 */
+	.block-table td:last-child,
+	.selected-block-table td:last-child {
+		border-bottom: none;
+		justify-content: flex-end;
+	}
+
+	/* 基础属性的攻 / 防 / 血横向排列，超出自行换行 */
+	.block-table td[data-label="基础属性"] > div,
+	.selected-block-table td[data-label="基础属性"] > div {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0 1em;
+	}
+
+	/* 品质 / 数量合为一行：内容自适应，标签收窄（均为两字） */
+	.block-table td:nth-child(5),
+	.block-table td:nth-child(6),
+	.selected-block-table td:nth-child(6),
+	.selected-block-table td:nth-child(7) {
+		flex: 1 1 auto;
+	}
+
+	.block-table td:nth-child(5)::before,
+	.block-table td:nth-child(6)::before,
+	.selected-block-table td:nth-child(6)::before,
+	.selected-block-table td:nth-child(7)::before {
+		flex-basis: 3em;
+	}
+
+	/* 字段名标签（仅带 data-label 的 td 生成，标题 / 操作行无标签） */
+	.block-table td[data-label]::before,
+	.selected-block-table td[data-label]::before,
+	.scan-table td[data-label]::before {
+		content: attr(data-label);
+		flex: 0 0 4.2em;
+		color: var(--muted);
+		font-size: 0.85em;
+	}
+
+	/* 视觉重点：法宝名称作卡片标题，加粗放大 */
+	.block-table td:nth-child(1) {
+		font-size: 1.05em;
+		font-weight: 600;
+	}
+
+	/* 已选列表：编号与名称同处标题行，编号弱化并补「#」前缀，与右侧名称留出间距；
+	 * 空表占位行的唯一 td 也是第 1 个子元素，须排除，避免占位文本被加「#」和压缩宽度 */
+	.selected-block-table td:nth-child(1):not(.table-empty) {
+		flex: 0 0 auto;
+		gap: 0.2em;
+		margin-right: 0.6em;
+		color: var(--muted);
+		font-size: 0.9em;
+	}
+
+	.selected-block-table td:nth-child(1):not(.table-empty)::before {
+		content: "#";
+	}
+
+	.selected-block-table td:nth-child(2) {
+		flex: 1 1 auto;
+		font-size: 1.05em;
+		font-weight: 600;
+	}
+
+	/* 空表占位行占满整卡并居中（其 td 无 data-label，不会生成标签；
+	 * 须带 td 提优先级，压过 td:last-child 的右对齐——占位 td 同时也是最后一列） */
+	.block-table td.table-empty,
+	.selected-block-table td.table-empty,
+	.scan-table td.table-empty {
+		justify-content: center;
+		height: 100%;
+	}
+
+	/* 识别结果（方案甲）：缩略图居左放大，名称独占一行，类型 / 品质各占一个 1fr 轨道平分剩余宽度 */
+	.scan-table tbody tr {
+		display: grid;
+		grid-template-columns: auto 1fr 1fr;
+		grid-template-areas:
+			"thumb idx conf"
+			"thumb name name"
+			"thumb type quality"
+			"count count del";
+		align-items: center;
+		column-gap: 0.7em;
+		row-gap: 0.5em;
+		padding: 0.6em 0.8em;
+	}
+
+	.scan-table td {
+		display: flex;
+		align-items: center;
+		gap: 0.5em;
+		min-width: 0;
+		padding: 0;
+		border-bottom: none;
+		white-space: normal;
+		text-align: left;
+	}
+
+	/* 识别区字段标签均为 2~3 字（类型 / 品质 / 数量 / 置信度），收窄标签列宽，
+	 * 避免窄屏下网格最小内容宽度撑爆卡片（通用标签为 4.2em，此规则在后覆盖） */
+	.scan-table td[data-label]::before {
+		flex-basis: 3.2em;
+	}
+
+	/* 类型 / 品质：标签上移为控件上方小标题，两列的最小内容宽度只剩控件本身，
+	 * 与 72px 缩略图同排时窄屏（≤390px）卡片不再被横向撑爆 */
+	.scan-table td:nth-child(3),
+	.scan-table td:nth-child(5) {
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 0.2em;
+	}
+
+	.scan-table td:nth-child(3)::before,
+	.scan-table td:nth-child(5)::before {
+		flex-basis: auto;
+	}
+
+	/* 类型 / 品质控件占满各自轨道（桌面端类型下拉的 max-width 限制在卡片内解除） */
+	.scan-table td:nth-child(3) > *,
+	.scan-table td:nth-child(5) > * {
+		width: 100%;
+		max-width: none;
+	}
+
+	.scan-table td:nth-child(1):not(.table-empty) {
+		grid-area: idx;
+		gap: 0.1em;
+		margin-right: 0.5em;
+		color: var(--muted);
+	}
+
+	.scan-table td:nth-child(1):not(.table-empty)::before {
+		content: "#";
+	}
+
+	.scan-table td:nth-child(2) {
+		grid-area: thumb;
+	}
+
+	.scan-table td:nth-child(3) {
+		grid-area: type;
+	}
+
+	.scan-table td:nth-child(4) {
+		grid-area: name;
+	}
+
+	.scan-table td:nth-child(5) {
+		grid-area: quality;
+	}
+
+	.scan-table td:nth-child(6) {
+		grid-area: count;
+	}
+
+	.scan-table td:nth-child(7) {
+		grid-area: conf;
+		justify-content: flex-end;
+	}
+
+	.scan-table td:nth-child(8) {
+		grid-area: del;
+		justify-content: flex-end;
+	}
+
+	/* 缩略图固定为 72px 正方形（桌面端为 32px 盒），内部图片保持 contain */
+	.scan-table .scan-thumb {
+		width: 72px;
+		height: 72px;
+		margin: 0;
+	}
+
+	/* 名称输入框占满所在网格区，min-width 归零使 1fr 轨道可压缩，卡片不被撑宽 */
+	.scan-table td:nth-child(4) .scan-name-combo {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.scan-table td:nth-child(4) .scan-name-input {
+		width: 100%;
+		max-width: none;
+		min-width: 0;
+	}
+
+	/* 空表占位行无网格命名区，手动占满整行 */
+	.scan-table:has(.table-empty) tbody,
+	.scan-table:has(.table-empty) tr {
+		height: 100%;
+	}
+
+	.scan-table .table-empty {
+		grid-column: 1 / -1;
+		grid-row: 1 / -1;
+	}
+}
+
+/* 移动端防自动放大：iOS 触屏 16px 防聚焦放大通用规则见 style.common.css，此处只为 .scan-table 控件补更高优先级 */
+@media (pointer: coarse) {
+	.scan-table input[type="number"],
+	.scan-table input[type="text"],
+	.scan-table select {
+		font-size: 16px;
+	}
+}

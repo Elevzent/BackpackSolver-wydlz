@@ -1,0 +1,763 @@
+<!doctype html>
+<html lang="zh">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>法宝图标指纹提取工具</title>
+		<link rel="stylesheet" href="../css/style.common.css" />
+		<link rel="stylesheet" href="../css/style.fp.css" />
+	</head>
+	<body>
+		<div class="page">
+			<h1>法宝图标指纹提取工具</h1>
+			<div class="usage">
+				<p class="usage-lead">
+					全流程：图库 → 标注 → 名录提取 → 回放 → 元素校准 →
+					保存。条目与校准样本存 localStorage（刷新不丢），truth
+					本体一律落盘为文件。
+				</p>
+				<ul>
+					<li>
+						<b>图库</b>：「选择图库目录」授权 test_images/（句柄缓存 IndexedDB
+						刷新自动恢复，失效点「恢复图库访问」重授）；保存 truth 直接写回
+						truth/&lt;图片名&gt;.json，不再弹保存框。
+					</li>
+					<li>
+						<b>标注</b>：载入截图自动定位切格（失败可拖框 /
+						调整边界），逐件点选棋子，类型 / 品质 /
+						锚点自动填写可手改；名称候选唯一自动填入，歧义格跑整盘识别预填、
+						仍须从候选确认；草稿按图片名存 localStorage，「保存 truth」落盘
+						test_images/truth/。
+					</li>
+					<li>
+						<b>名录与提取</b>：歧义组棋子行内「提取指纹」；名录顶部冲突组
+						「进入提取」下钻组级提取（采样 → 剔除 → 聚合 → 差分报告确认入库）；
+						0 样本法宝在提取页「手动补图」点选占用格补样本。
+					</li>
+					<li>
+						<b>回放</b>：上传 truth + 截图（或图库一键载入）跑完整识别并对照
+						truth 评分，与 node tools/bench/bench.js compare 同口径；未配对
+						truth 的截图退化为纯识别回放。
+					</li>
+					<li>
+						<b>元素校准</b>：批量载入 truth + 截图，先棋盘定位再按类别
+						展示锚点格卡片（采样圆盘范围，可拖动调圆心 / 改分类 / 舍弃），
+						确认后按锚点格圆盘全像素采样（同 bench calib-dots
+						口径，圆心偏移写回 truth 持久化溯源），建议区间由簇分析自动产出
+						（两两零重叠，无需人工收窄），直方图对照后逐类 /
+						全部采用；采用与保存均过交叠硬校验，重叠即拒绝。
+					</li>
+					<li>
+						<b>并行</b>：回放验证 / 元素校准素材定位与批量采样 /
+						组级提取批量采样均为 Web
+						Worker 多图并行（识别口径与串行 / node bench
+						逐字节一致），顶部「并行线程」可调（默认 CPU 核数 - 2，下限
+						2，上限锁死为该默认值，存 localStorage）；worker
+						不可用自动回退串行。
+					</li>
+					<li>
+						<b>保存</b>：输出整体替换 data/scan-fp-refs.js（Chromium
+						可「打开数据文件」授权直写）；保存成功后本地已提取条目自动清空
+						（内容已落盘），法宝名录 / 冲突组表格同步刷新为文件已存状态；
+						SCAN_DOT_TYPES 变更入库后顶部出现重训提醒条，按提示在 tools/bench
+						重训（模型内嵌所对齐的区间水印）后「重新读取」校验一致自动解除。
+					</li>
+					<li>
+						<b>Node 端</b>（tools/bench/，项目根执行）：<code
+							>node tools/bench/bench.js run</code
+						>
+						全量回归 / <code>compare</code> 对照基线 /
+						<code>calib-dots</code> 区间仿真校准；<code
+							>node tools/bench/refingerprint.js</code
+						>
+						批量重提指纹收紧组 maxDiff；模型重训序列
+						<code
+							>dump-feats.js &amp;&amp; bench.js calib-types &amp;&amp;
+							dump-pixels.js &amp;&amp; bench.js calib-pixel</code
+						>（BENCH_JOBS 调并发，模型采信 ovr 勿盲贴 tree，对照
+						data/scan-fp-refs.js 头注释）；<code
+							>node tools/test-fp-group.js</code
+						>
+						工具逻辑测试。
+					</li>
+				</ul>
+			</div>
+
+			<div class="panel bar">
+				<span id="dataStatus" class="status"
+					>正在加载 shapes.data.js / blocks.data.js / scan-fp-refs.js …</span
+				>
+				<label class="parallel-ctl"
+					>并行线程
+					<input type="number" id="parallelInput" min="2" step="1" />
+				</label>
+			</div>
+
+			<div class="panel retrain-bar" id="retrainBar" hidden>
+				<span id="retrainMsg"></span>
+				<code id="retrainCmd"></code>
+				<button id="retrainCopyBtn" class="btn-primary">复制重训命令</button>
+			</div>
+
+			<div class="panel tab-bar">
+				<button class="btn-toggle active" data-tab="gallery">原始图库</button>
+				<button class="btn-toggle" data-tab="catalog">法宝名录</button>
+				<button class="btn-toggle" data-tab="annotate">真值标注</button>
+				<button class="btn-toggle" data-tab="replay">回放验证</button>
+				<button class="btn-toggle" data-tab="dotcalib">元素校准</button>
+			</div>
+
+			<div class="tab-page" id="tab-gallery">
+				<div class="panel">
+					<div class="bar" style="margin-bottom: 0.8em">
+						<b>原始图库</b>
+						<button id="galPickBtn" class="btn-primary">选择图库目录</button>
+						<button id="galPermBtn" class="btn-primary" hidden>
+							恢复图库访问
+						</button>
+						<button id="galRefreshBtn" hidden>刷新</button>
+						<button id="galFilterToggle" class="btn-toggle" hidden>
+							只看未标注
+						</button>
+						<span class="status" id="galStats"></span>
+					</div>
+					<div class="bar" style="margin-bottom: 0.8em">
+						<span class="status" id="galGuide"
+							>选择 test_images/ 目录后，全量图片与 truth
+							状态一览：未标注标红置顶， 行内「标注」直达真值标注（已有 truth
+							自动载入），保存 truth 直接写回图库； 目录句柄缓存在
+							IndexedDB，刷新后自动恢复</span
+						>
+					</div>
+					<div
+						class="table-wrap table-scroll"
+						id="galWrap"
+						hidden
+						style="max-height: 34em">
+						<table id="galTable" class="table">
+							<thead>
+								<tr>
+									<th>缩略图</th>
+									<th>文件名</th>
+									<th>truth 状态</th>
+									<th>修改时间</th>
+									<th>操作</th>
+								</tr>
+							</thead>
+							<tbody id="galTbody"></tbody>
+						</table>
+					</div>
+				</div>
+			</div>
+
+			<div class="tab-page" id="tab-catalog" hidden>
+				<div class="panel">
+					<div class="bar" style="margin-bottom: 0.8em">
+						<b>冲突组（撞形状歧义组）</b>
+						<span class="status" id="grpStats"></span>
+					</div>
+					<div class="bar" style="margin-bottom: 0.6em">
+						<span class="status"
+							>行 = 类型|形状|红/普通 冲突组：成员、库内样本数（test_images
+							truth 索引，未载入显示 —）、指纹状态与最近回放 margin
+							健康度；「进入提取」打开组级提取页（采样 → 剔除 → 聚合 →
+							差分报告）</span
+						>
+					</div>
+					<div
+						class="table-wrap table-scroll"
+						style="max-height: 20em; margin-bottom: 0.8em">
+						<table id="grpTable" class="table">
+							<thead>
+								<tr>
+									<th>冲突组</th>
+									<th>成员（库内样本数）</th>
+									<th>指纹状态</th>
+									<th>回放 margin</th>
+									<th>操作</th>
+								</tr>
+							</thead>
+							<tbody id="grpTbody"></tbody>
+						</table>
+					</div>
+					<div class="bar" style="margin-bottom: 0.8em">
+						<b>法宝名录</b>
+						<button id="filterToggle" class="btn-toggle active">
+							只看歧义
+						</button>
+						<span class="status" id="tableStats"></span>
+						<span style="flex: 1"></span>
+					</div>
+					<div class="table-wrap table-scroll">
+						<table id="blockTable" class="table">
+							<thead>
+								<tr>
+									<th>名称</th>
+									<th>类型</th>
+									<th>形状</th>
+									<th>类别</th>
+									<th>歧义</th>
+									<th>指纹</th>
+									<th>操作</th>
+								</tr>
+							</thead>
+							<tbody id="blockTbody"></tbody>
+						</table>
+					</div>
+				</div>
+			</div>
+
+			<div class="tab-page" id="tab-annotate" hidden>
+				<div class="panel bar">
+					<input type="file" id="annFileInput" accept="image/*" />
+					<span>
+						行
+						<input type="number" id="annRowsInput" min="1" max="20" value="6" />
+						列
+						<input type="number" id="annColsInput" min="1" max="20" value="7" />
+					</span>
+					<button id="annAutoBtn" disabled>自动定位</button>
+					<button id="annEditBtn" class="btn-toggle" disabled>调整边界</button>
+					<button id="annSliceBtn" class="btn-primary" disabled>切格</button>
+					<span id="annLoadStatus" class="status">尚未载入截图</span>
+				</div>
+
+				<div class="main">
+					<div class="panel">
+						<div class="canvas-wrap empty" id="annCanvasWrap">
+							<canvas id="annBoardCanvas" class="board-canvas"></canvas>
+						</div>
+						<p class="hint">
+							定位 / 拖框 /
+							调整边界用法与提取弹窗一致：自动定位失败可在图上拖出棋盘区域，
+							「调整边界」模式下拖动边缘 /
+							角点缩放、按住中间移动，松手自动重切格。
+						</p>
+					</div>
+
+					<div class="panel">
+						<div class="bar" style="margin-bottom: 0.5em">
+							<button id="annClearSelBtn">清除选中</button>
+							<span class="status" id="annCoverage"></span>
+						</div>
+						<div id="annCellGrid" class="cell-grid"></div>
+						<div id="annCellWarn" class="cell-warn"></div>
+
+						<div class="form">
+							<div class="form-row">
+								<label>选中形状</label>
+								<span id="annShapeInfo">未选择格子</span>
+							</div>
+							<div class="form-row">
+								<label>类型</label>
+								<select id="annTypeSelect"></select>
+								<span class="status" id="annTypeGuess"></span>
+								<label>品质</label>
+								<select id="annQualitySelect">
+									<option value="1">一阶（绿）</option>
+									<option value="2">二阶（蓝）</option>
+									<option value="3">三阶（紫）</option>
+									<option value="4">四阶（金）</option>
+									<option value="5">五阶（红）</option>
+								</select>
+								<span class="status" id="annQualityGuess"></span>
+							</div>
+							<div class="form-row">
+								<label>候选名称</label>
+								<span id="annExpectNames" class="status">—</span>
+								<span id="annRecStatus" class="status"></span>
+							</div>
+							<div class="form-row">
+								<label>锚点</label>
+								<span id="annAnchorInfo">—</span>
+								<button id="annAnchorPickBtn" class="btn-toggle">
+									设为锚点
+								</button>
+							</div>
+							<div class="form-row">
+								<label>名称</label>
+								<input
+									type="text"
+									id="annNameInput"
+									list="annNameList"
+									placeholder="写入 truth；候选唯一自动填入，歧义时必选" />
+								<datalist id="annNameList"></datalist>
+								<button id="annAddPieceBtn" class="btn-primary" disabled>
+									加入棋子
+								</button>
+							</div>
+							<div class="form-row">
+								<span id="annFormStatus" class="status"></span>
+							</div>
+						</div>
+
+						<div class="form">
+							<div class="form-row">
+								<label>已标棋子</label>
+								<span id="annPieceStats" class="status"></span>
+							</div>
+							<div class="entries" id="annPieceList"></div>
+						</div>
+					</div>
+				</div>
+
+				<div class="panel">
+					<div class="bar" style="margin-bottom: 0.8em">
+						<b>truth 文件</b>
+						<input
+							type="file"
+							id="annTruthFile"
+							accept=".json,application/json" />
+						<button id="annSaveTruthBtn" class="btn-primary">保存 truth</button>
+						<button id="annClearDraftBtn">清空草稿</button>
+						<span id="annTruthStatus" class="status"></span>
+					</div>
+					<textarea
+						id="annOutput"
+						readonly
+						hidden
+						placeholder="当前环境不支持直接保存文件时，truth JSON 输出在这里"></textarea>
+					<div class="bar" id="annOutputBar" hidden style="margin-top: 0.6em">
+						<button id="annCopyBtn" class="btn-primary">复制</button>
+					</div>
+				</div>
+			</div>
+
+			<div class="tab-page" id="tab-replay" hidden>
+				<div class="panel">
+					<div class="bar" style="margin-bottom: 0.8em">
+						<b>回放验证 / 回测</b>
+						<span>测试截图</span>
+						<input type="file" id="replayFile" accept="image/*" multiple />
+						<span>truth JSON</span>
+						<input
+							type="file"
+							id="btTruthFile"
+							accept=".json,application/json"
+							multiple />
+						<span>历史报告</span>
+						<input
+							type="file"
+							id="btReportFile"
+							accept=".json,application/json" />
+						<button id="btGalleryLoadBtn" class="btn-primary" hidden>
+							从图库载入全部
+						</button>
+						<span>
+							行
+							<input type="number" id="replayRows" min="1" max="20" value="6" />
+							列
+							<input type="number" id="replayCols" min="1" max="20" value="7" />
+						</span>
+						<button id="replayClearBtn">清空结果</button>
+					</div>
+					<div class="bar" style="margin-bottom: 0.8em">
+						<span class="status" id="btTruthStatus"
+							>先选 truth JSON（可多选，按 truth.file /
+							文件名与截图配对）再选截图： 配对的图跑完整识别并对照 truth
+							评分（与 node bench compare 同口径），
+							未配对的图退化为纯识别回放；历史报告载入后与本次汇总逐项对比，下降标红</span
+						>
+					</div>
+					<div class="bt-block" id="btSummary" hidden></div>
+					<div class="bt-block" id="btCompare" hidden></div>
+					<div class="bt-block" id="btFailures" hidden></div>
+					<div id="btCards"></div>
+					<div
+						class="table-wrap table-scroll"
+						id="replayWrap"
+						hidden
+						style="margin-top: 0.8em">
+						<table id="replayTable" class="table">
+							<thead>
+								<tr>
+									<th>截图</th>
+									<th>缩略图</th>
+									<th>锚点</th>
+									<th>类型 / 形状 / 品质</th>
+									<th>识别名</th>
+									<th>命中 diff</th>
+									<th>次低 diff</th>
+									<th>间隔</th>
+									<th>判定</th>
+								</tr>
+							</thead>
+							<tbody id="replayTbody"></tbody>
+						</table>
+					</div>
+					<div class="bar" style="margin-top: 0.6em">
+						<span class="status" id="replayStatus">尚未运行</span>
+					</div>
+				</div>
+			</div>
+
+			<div class="tab-page" id="tab-dotcalib" hidden>
+				<div class="panel">
+					<div class="bar" style="margin-bottom: 0.8em">
+						<b>元素圆点色校准</b>
+						<span>truth JSON</span>
+						<input
+							type="file"
+							id="dcTruthFile"
+							accept=".json,application/json"
+							multiple />
+						<span>测试截图</span>
+						<input type="file" id="dcImgFile" accept="image/*" multiple />
+						<button id="dcGalleryLoadBtn" hidden>从图库载入全部</button>
+						<button id="dcSampleBtn" class="btn-primary" disabled>
+							批量采样
+						</button>
+						<span class="status" id="dcStatus"
+							>先选 truth JSON 与测试截图（均可多选，按 truth.file /
+							文件名配对）</span
+						>
+					</div>
+					<div class="bar" style="margin-bottom: 0.6em">
+						<span class="status"
+							>批量采样按 truth 锚点格跑 scanDiskHues 圆盘全像素采样（与 node
+							tools/bench/bench.js calib-dots
+							同口径）；点「批量采样」先做棋盘定位，再把 truth
+							锚点格一格一卡按类别列出（卡图 = 锚点格切图，白圈 =
+							实际采样圆盘边界），可拖动调圆心、改分类、舍弃，
+							确认后才采样；直方图色柱为批量样本，
+							顶部刻度为弹窗手动累积样本（localStorage），色带 / 竖线为当前生效区间</span
+						>
+					</div>
+					<div class="bt-block" id="dcConfirm" hidden>
+						<div class="bar" style="margin-bottom: 0.5em">
+							<b>采样素材确认（按元素类别）</b>
+							<button id="dcConfirmGo" class="btn-primary">
+								确认，开始采样
+							</button>
+							<button id="dcConfirmCancel">取消</button>
+							<span class="status" id="dcConfirmStatus"></span>
+						</div>
+						<div class="bar" style="margin-bottom: 0.5em">
+							<span class="status"
+								>一格一卡：图为 truth 锚点格切图（锚点格严格取自
+								truth、不可移动），白色圈 = 实际采样圆盘边界
+								（scanDiskHues 采样圆盘）；圆盘位置来源标注：「文件偏移」=
+								truth 已存的人工确认偏移（直接沿用，不再重复定位），
+								「自动定位」= 徽标几何定位预置（含规范位缺省，请核对），
+								「手动调环」= 本次拖动调整（在格图上拖动即可）；
+								操作栏可手动改分类（未分类锚点采样时跳过）、舍弃此格 /
+								整图。确认采样后圆心偏移写回 truth 文件（图库来源直接
+								落盘，下次确认沿用；舍弃 / 分类调整只改本次采样的内存副本）</span
+							>
+						</div>
+						<div id="dcConfirmList"></div>
+					</div>
+					<canvas id="dcHist" width="720" height="320"></canvas>
+					<div class="bt-legend" id="dcLegend" style="margin-top: 0.5em"></div>
+					<div class="status" id="dcWarn" style="margin-top: 0.4em"></div>
+					<p class="hint">
+						「体」为低饱和灰色圆盘，hue 不可分：环上采样过饱和度门槛后
+						基本无票，判定走专属特征路径（灰盘 + 亮度两档 + 暗纹 +
+						亮度双峰，见 scan-core.js scanCellFeat 体路径）与灰区模型兜底；
+						配置中体的 hue 区间按首命中顺序被火 / 土 / 金完全遮盖
+						（不产生票），样本仅供观察是否与彩色区间冲突。
+						「火」已有 hue 区间（回绕段），与雷在 175-179
+						重叠段双计票后多数决，另有分类型防伪闸（内盘暗纹 /
+						内盘亮度窗口 / 环主色中位等）——并非兜底归类。
+					</p>
+					<div
+						class="table-wrap table-scroll"
+						style="margin-top: 0.6em; max-height: 22em">
+						<table id="dcTable" class="table">
+							<thead>
+								<tr>
+									<th>类型</th>
+									<th>样本格</th>
+									<th>无圆点格</th>
+									<th>hue 样本</th>
+									<th>min</th>
+									<th>p1</th>
+									<th>p5</th>
+									<th>p50</th>
+									<th>p95</th>
+									<th>p99</th>
+									<th>max</th>
+									<th>建议区间</th>
+									<th>操作</th>
+								</tr>
+							</thead>
+							<tbody id="dcTbody"></tbody>
+						</table>
+					</div>
+					<div class="bar" style="margin-top: 0.6em">
+						<button id="dcAdoptAllBtn" class="btn-primary" disabled>
+							全部采用建议区间
+						</button>
+						<span class="status" id="dcAdoptStatus"></span>
+					</div>
+				</div>
+			</div>
+
+			<div class="tab-page" id="tab-gxpage" hidden>
+				<div class="panel">
+					<div class="bar" style="margin-bottom: 0.8em">
+						<button id="gxBackBtn">← 返回名录</button>
+						<b id="gxTitle">组级提取</b>
+						<span id="gxShapeSlot"></span>
+						<span class="status" id="gxMembers"></span>
+					</div>
+
+					<!-- ① 采样 -->
+					<div class="bar" style="margin-bottom: 0.4em">
+						<b>① 采样</b>
+						<span>truth JSON</span>
+						<input
+							type="file"
+							id="gxTruthFile"
+							accept=".json,application/json"
+							multiple />
+						<span>测试截图</span>
+						<input type="file" id="gxImgFile" accept="image/*" multiple />
+						<button id="gxGalleryLoadBtn" hidden>从图库载入全部</button>
+						<button id="gxSampleBtn" class="btn-primary" disabled>
+							批量采样
+						</button>
+					</div>
+					<div class="bar" style="margin-bottom: 0.8em">
+						<span class="status" id="gxSampleStatus"
+							>一次把 test_images 的截图与 truth JSON 一起喂进来（均可多选，按
+							truth.file / 文件名配对；图库可用时「从图库载入全部」一键注入），
+							批量跑棋盘定位 + 切格，组内法宝的占用格裁成样本卡片</span
+						>
+					</div>
+
+					<!-- ② 剔除 -->
+					<div class="bar" style="margin-bottom: 0.4em">
+						<b>② 剔除（主要人工介入点）</b>
+						<span class="status" id="gxCullStatus"></span>
+					</div>
+					<div class="status" id="gxSkipped" style="margin-bottom: 0.4em"></div>
+					<div id="gxCards" style="margin-bottom: 0.8em"></div>
+
+					<!-- 手动补图（0 样本法宝入口） -->
+					<div class="bt-block" id="gxManualBlock">
+						<div class="bar" style="margin-bottom: 0.5em">
+							<b>手动补图（0 样本 / 定位失败兜底）</b>
+							<input type="file" id="gxwFile" accept="image/*" />
+							<span>
+								行
+								<input type="number" id="gxwRows" min="1" max="20" value="6" />
+								列
+								<input type="number" id="gxwCols" min="1" max="20" value="7" />
+							</span>
+							<button id="gxwAuto" disabled>自动定位</button>
+							<button id="gxwEdit" class="btn-toggle" disabled>调整边界</button>
+							<button id="gxwSlice" class="btn-primary" disabled>切格</button>
+						</div>
+						<div class="bar" style="margin-bottom: 0.5em">
+							<span class="status" id="gxwStatus"
+								>上传截图自动定位切格，点选该法宝的占用格后「加入样本」，得到与图库样本同款的样本卡片（走同一套剔除
+								/ 聚合）</span
+							>
+						</div>
+						<div class="main">
+							<div>
+								<div class="canvas-wrap empty" id="gxwWrap">
+									<canvas id="gxwCanvas" class="board-canvas"></canvas>
+								</div>
+							</div>
+							<div>
+								<div class="bar" style="margin-bottom: 0.5em">
+									<label>法宝</label>
+									<select id="gxManualName"></select>
+									<label>品质</label>
+									<select id="gxManualQuality">
+										<option value="0">一阶（绿）</option>
+										<option value="1">二阶（蓝）</option>
+										<option value="2">三阶（紫）</option>
+										<option value="3">四阶（金）</option>
+										<option value="4">五阶（红）</option>
+									</select>
+									<button id="gxManualAddBtn" class="btn-primary" disabled>
+										加入样本
+									</button>
+								</div>
+								<div id="gxwCellGrid" class="cell-grid"></div>
+								<div id="gxwCellWarn" class="cell-warn"></div>
+							</div>
+						</div>
+					</div>
+
+					<!-- ③ 一键提取 -->
+					<div class="bar" style="margin: 0.8em 0 0.4em">
+						<b>③ 一键提取</b>
+						<label class="status">
+							<input type="checkbox" id="gxJitter" />
+							单样本法宝 ±2px 抖动增强（算不出类内方差的兜底，报告会标注谨慎）
+						</label>
+						<button id="gxAggBtn" class="btn-primary" disabled>
+							聚合剩余样本（按块中位数）
+						</button>
+						<span class="status" id="gxAggStatus"></span>
+					</div>
+
+					<!-- ④ 组级差分报告 -->
+					<div id="gxReport"></div>
+					<div class="bar" id="gxCommitBar" hidden style="margin-top: 0.6em">
+						<b>④ 确认入库</b>
+						<label>组 maxDiff</label>
+						<input type="number" id="gxMaxDiff" min="1" max="200" value="25" />
+						<button id="gxCommitBtn" class="btn-primary">
+							确认入库（合并到输出）
+						</button>
+						<span class="status" id="gxCommitStatus"
+							>入库后走底部输出 / 数据文件直写（File System
+							Access），写回前建议先跑回放验证</span
+						>
+					</div>
+				</div>
+			</div>
+
+			<div class="modal-mask" id="extractModal" hidden>
+				<div class="modal">
+					<div class="modal-head">
+						<b id="modalTitle">提取指纹</b>
+						<span id="modalTarget" class="status"></span>
+						<span style="flex: 1"></span>
+						<button id="modeExtractBtn" class="btn-toggle active">
+							指纹提取
+						</button>
+						<button id="modeCalBtn" class="btn-toggle">元素色校准</button>
+						<button id="modalClose">关闭</button>
+					</div>
+					<div class="panel bar">
+						<input type="file" id="fileInput" accept="image/*" />
+						<span>
+							行
+							<input type="number" id="rowsInput" min="1" max="20" value="6" />
+							列
+							<input type="number" id="colsInput" min="1" max="20" value="7" />
+						</span>
+						<button id="autoBtn" disabled>自动定位</button>
+						<button id="editBtn" class="btn-toggle" disabled>调整边界</button>
+						<button id="sliceBtn" class="btn-primary" disabled>切格</button>
+						<span id="loadStatus" class="status">尚未载入截图</span>
+					</div>
+
+					<div class="main">
+						<div class="panel">
+							<div class="canvas-wrap empty" id="canvasWrap">
+								<canvas id="boardCanvas" class="board-canvas"></canvas>
+							</div>
+							<p class="hint">
+								「自动定位」基于 OpenCV（优先加载 ../opencv.js，失败回退
+								CDN）；定位失败或偏差较大时，
+								可直接在图上按住拖出棋盘区域（只框住格子部分，贴紧最外侧格子的边缘）；
+								已有框时重拖会画新框。「调整边界」模式下拖动边缘 /
+								角点缩放、按住中间整体移动， 松手自动重切格。
+							</p>
+						</div>
+
+						<div class="panel">
+							<div class="bar" style="margin-bottom: 0.5em">
+								<button id="clearSelBtn">清除选中</button>
+							</div>
+							<div id="cellGrid" class="cell-grid"></div>
+							<div id="cellWarn" class="cell-warn"></div>
+
+							<div class="form" id="extractForm">
+								<div class="form-row">
+									<label>选中形状</label>
+									<span id="shapeInfo">未选择格子</span>
+									<canvas id="pieceThumb" width="0" height="0" hidden></canvas>
+								</div>
+								<div class="form-row">
+									<label>类型</label>
+									<select id="typeSelect"></select>
+									<label>品质</label>
+									<select id="qualitySelect">
+										<option value="0">一阶（绿）</option>
+										<option value="1">二阶（蓝）</option>
+										<option value="2">三阶（紫）</option>
+										<option value="3">四阶（金）</option>
+										<option value="4">五阶（红）</option>
+									</select>
+									<span class="status" id="qualityGuess"></span>
+								</div>
+								<div class="form-row">
+									<label>名称</label>
+									<input
+										type="text"
+										id="nameInput"
+										list="nameList"
+										placeholder="按 类型+形状+红/普通 过滤" />
+									<datalist id="nameList"></datalist>
+									<button id="extractBtn" class="btn-primary" disabled>
+										提取指纹
+									</button>
+								</div>
+							</div>
+
+							<div id="calPanel" hidden>
+								<div class="form-row">
+									<label>元素色校准</label>
+									<span class="status"
+										>在上方格子板点击一个带元素圆点的格子采样，指定归属类型后加入样本</span
+									>
+								</div>
+								<div class="form-row">
+									<label>采样结果</label>
+									<span id="calSampleInfo" class="status">尚未采样</span>
+								</div>
+								<div class="form-row">
+									<label>归属类型</label>
+									<select id="calType"></select>
+									<button id="calAddBtn" class="btn-primary" disabled>
+										加入校准样本
+									</button>
+								</div>
+								<div id="calRanges"></div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<div class="panel">
+				<div class="bar" style="margin-bottom: 0.8em">
+					<b>已提取条目</b>
+					<button id="clearBtn">清空全部</button>
+				</div>
+				<div class="entries" id="entryList"></div>
+			</div>
+
+			<div class="panel">
+				<div class="bar" style="margin-bottom: 0.8em">
+					<b>输出（完整替换 data/scan-fp-refs.js）</b>
+					<button id="fpOpenBtn" class="btn-primary">打开数据文件</button>
+					<button id="fpPermBtn" class="btn-primary" hidden>
+						恢复数据文件授权
+					</button>
+					<button id="fpRefreshBtn" hidden>重新读取</button>
+					<span id="fpFileStatus" class="status"></span>
+					<button id="copyBtn" class="btn-primary">复制</button>
+					<button id="saveBtn">保存到文件</button>
+				</div>
+				<textarea
+					id="output"
+					readonly
+					placeholder="提取的指纹条目会输出在这里"></textarea>
+			</div>
+		</div>
+
+		<div class="preview-mask" id="galPreview" hidden>
+			<img id="galPreviewImg" alt="" />
+			<span id="galPreviewName"></span>
+		</div>
+
+		<script src="../data/shapes.data.js"></script>
+		<script src="../data/blocks.data.js"></script>
+		<script src="../data/scan-fp-refs.js"></script>
+		<script src="../script/scan-core.js"></script>
+		<script src="../script/scan-bench.js"></script>
+		<script src="../script/scan-fp-io.js"></script>
+		<script src="../script/opencv-loader.js"></script>
+		<script src="../script/fp-pool.js"></script>
+		<script src="../script/main.fp.js"></script>
+	</body>
+</html>
