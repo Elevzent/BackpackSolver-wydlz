@@ -16,6 +16,11 @@ var loadOpenCV = (() => {
 		"https://unpkg.com/@techstark/opencv-js/dist/opencv.js",
 	];
 
+	// 解压后真实大小（= lib/opencv.js 文件大小）。压缩（gzip/br）传输时
+	// Content-Length 是压缩后字节，而流式读到的是解压后字节，两者对不上；
+	// 资源内容固定，直接硬编码作为进度总量
+	const EXPECTED_BYTES = 13298869;
+
 	let cv = null;
 	let cvPromise = null;
 	// 多个调用方（弹窗预加载 / 自动定位）共享同一次加载，进度回调全部通知
@@ -26,10 +31,10 @@ var loadOpenCV = (() => {
 	async function fetchScript(url) {
 		const resp = await fetch(url);
 		if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-		const total = Number(resp.headers.get("content-length")) || 0;
+		const total = EXPECTED_BYTES;
 		if (!resp.body?.getReader) {
 			const buf = await resp.arrayBuffer();
-			notify({ loaded: buf.byteLength, total: total || buf.byteLength, phase: "download" });
+			notify({ loaded: buf.byteLength, total, phase: "download" });
 			return new Blob([buf], { type: "text/javascript" });
 		}
 		const reader = resp.body.getReader();

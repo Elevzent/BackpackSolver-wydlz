@@ -2524,11 +2524,8 @@ function scanCvProgress({ loaded, total, phase }) {
 		return;
 	}
 	const mb = (loaded / 1048576).toFixed(1);
-	scanStatus(
-		total
-			? `识别组件下载中 ${Math.min(100, Math.round((loaded / total) * 100))}%（${mb}MB）…`
-			: `识别组件下载中 ${mb}MB…`,
-	);
+	const pct = Math.min(100, Math.round((loaded / total) * 100));
+	scanStatus(`识别组件下载中 ${pct}%（${mb}MB）…`);
 }
 
 /** 网格行列数跟随主页棋盘配置 */
