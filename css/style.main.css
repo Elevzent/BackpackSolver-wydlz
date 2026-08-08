@@ -109,6 +109,69 @@ main {
 	white-space: nowrap;
 }
 
+.column-toggle-row {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.45em;
+	margin-top: 0.8em;
+	padding: 0.45em 0.65em 0.55em;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	color: var(--muted);
+}
+
+.column-toggle-row legend {
+	padding: 0 0.3em;
+	font-size: 0.9em;
+	font-weight: 600;
+	color: var(--text);
+}
+
+.column-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35em;
+	padding: 0.25em 0.5em;
+	border: 1px solid var(--border-strong);
+	border-radius: 6px;
+	background: var(--white);
+	font-size: 0.9em;
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.column-toggle:has(input:checked) {
+	border-color: var(--accent);
+	color: var(--accent);
+}
+
+.column-toggle input {
+	accent-color: var(--accent);
+}
+
+/* 三个可选列默认收起，按各列表表格上方的复选框单独展开 */
+.block-table:not(.show-attrs) th:nth-child(3),
+.block-table:not(.show-attrs) td:nth-child(3),
+.selected-block-table:not(.show-attrs) th:nth-child(4),
+.selected-block-table:not(.show-attrs) td:nth-child(4) {
+	display: none;
+}
+
+.block-table:not(.show-bonus) th:nth-child(4),
+.block-table:not(.show-bonus) td:nth-child(4),
+.selected-block-table:not(.show-bonus) th:nth-child(5),
+.selected-block-table:not(.show-bonus) td:nth-child(5) {
+	display: none;
+}
+
+.block-table:not(.show-quantity) th:nth-child(6),
+.block-table:not(.show-quantity) td:nth-child(6),
+.selected-block-table:not(.show-quantity) th:nth-child(7),
+.selected-block-table:not(.show-quantity) td:nth-child(7) {
+	display: none;
+}
+
 /* 表格 */
 .scroll-box {
 	flex: 1;
@@ -293,10 +356,16 @@ main {
 /* 实时布局的棋盘为只读展示，无指针与悬停态 */
 .layout-grid .board-cell {
 	cursor: default;
+	border-radius: 0;
 }
 
 .layout-grid .board-cell:hover {
 	border-color: var(--border-strong);
+}
+
+/* 实时布局中同一法宝的格子连续铺开，边界由渲染器按物品统一绘制 */
+.layout-grid {
+	gap: 0;
 }
 
 /* 实时布局结果 / 计算日志 */
