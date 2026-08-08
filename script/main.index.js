@@ -22,8 +22,16 @@ if (errHtml) {
 /** 共享常量 */
 const els = {
 	typeSelect: document.querySelector(".type-select"),
+	blockTableEl: document.querySelector(".block-table"),
 	blockTable: document.querySelector(".block-table tbody"),
+	blockAttrsToggle: document.querySelector(".block-attrs-toggle"),
+	blockBonusToggle: document.querySelector(".block-bonus-toggle"),
+	blockQuantityToggle: document.querySelector(".block-quantity-toggle"),
+	selectedTableEl: document.querySelector(".selected-block-table"),
 	selectedTable: document.querySelector(".selected-block-table tbody"),
+	selectedAttrsToggle: document.querySelector(".selected-attrs-toggle"),
+	selectedBonusToggle: document.querySelector(".selected-bonus-toggle"),
+	selectedQuantityToggle: document.querySelector(".selected-quantity-toggle"),
 	clearBtn: document.querySelector(".selected-block .clear-btn"),
 	leftPanel: document.querySelector(".left-panel"),
 	selectedPanel: document.querySelector(".selected-block"),
@@ -2037,7 +2045,7 @@ function renderLayoutSolution(result, board = boardState) {
 				num.className = "cell-num";
 				num.textContent = i + 1;
 				cell.appendChild(num);
-				// 与异件/空格/边界相邻的边加粗，同件内部格子间细线
+				// 同件内部无分隔线；异件之间留白，空格边缘沿用棋盘细线
 				[
 					[r > 0 ? ci - cols : -1, "Top"],
 					[r < rows - 1 ? ci + cols : -1, "Bottom"],
@@ -2046,8 +2054,10 @@ function renderLayoutSolution(result, board = boardState) {
 				].forEach(([ni, side]) => {
 					cell.style[`border${side}`] =
 						ni >= 0 && owner[ni] === i
-							? "1px solid var(--cell-inner-line)"
-							: "2px solid var(--cell-outline)";
+							? "0 solid transparent"
+							: ni >= 0 && owner[ni] >= 0
+									? "1px solid var(--white)"
+									: "1px solid var(--border-strong)";
 				});
 			}
 			df.appendChild(cell);
@@ -4238,6 +4248,18 @@ function init() {
 	// 静态数量输入框统一换自定义步进器（动态创建的由各处自行包装）
 	document.querySelectorAll(".num-input").forEach(numStepper);
 	typeSelectInit();
+	[
+		[els.blockTableEl, els.blockAttrsToggle, "show-attrs"],
+		[els.blockTableEl, els.blockBonusToggle, "show-bonus"],
+		[els.blockTableEl, els.blockQuantityToggle, "show-quantity"],
+		[els.selectedTableEl, els.selectedAttrsToggle, "show-attrs"],
+		[els.selectedTableEl, els.selectedBonusToggle, "show-bonus"],
+		[els.selectedTableEl, els.selectedQuantityToggle, "show-quantity"],
+	].forEach(([table, toggle, cls]) => {
+		toggle.addEventListener("change", () => {
+			table.classList.toggle(cls, toggle.checked);
+		});
+	});
 	renderSelectedBlocks();
 	presetInit();
 	boardInit();
