@@ -35,8 +35,6 @@
 	--cell-num-shadow: rgba(0, 0, 0, 0.35);
 	--legend-chip-border: rgba(0, 0, 0, 0.15);
 	--tooltip-bg: rgba(17, 24, 39, 0.92);
-	--cell-inner-line: rgba(255, 255, 255, 0.45);
-	--cell-outline: #4b5563;
 
 	/* 页头向内容区的浅色渐变过渡（颜色与高度） */
 	--header-fade: rgba(255, 255, 255, 0.4);
