@@ -22,8 +22,16 @@ if (errHtml) {
 /** 共享常量 */
 const els = {
 	typeSelect: document.querySelector(".type-select"),
+	blockTableEl: document.querySelector(".block-table"),
 	blockTable: document.querySelector(".block-table tbody"),
+	blockAttrsToggle: document.querySelector(".block-attrs-toggle"),
+	blockBonusToggle: document.querySelector(".block-bonus-toggle"),
+	blockQuantityToggle: document.querySelector(".block-quantity-toggle"),
+	selectedTableEl: document.querySelector(".selected-block-table"),
 	selectedTable: document.querySelector(".selected-block-table tbody"),
+	selectedAttrsToggle: document.querySelector(".selected-attrs-toggle"),
+	selectedBonusToggle: document.querySelector(".selected-bonus-toggle"),
+	selectedQuantityToggle: document.querySelector(".selected-quantity-toggle"),
 	clearBtn: document.querySelector(".selected-block .clear-btn"),
 	leftPanel: document.querySelector(".left-panel"),
 	selectedPanel: document.querySelector(".selected-block"),
@@ -742,23 +750,9 @@ function renderBoard() {
 	els.boardGrid.replaceChildren(df);
 }
 
-// 实时布局的棋盘：只读展示已应用配置，渲染 boardState
+// 实时布局的棋盘：只读展示已应用配置，渲染 boardState（空棋盘）
 function renderLayoutBoard() {
-	const { cols, rows, disabled } = boardState;
-	const df = document.createDocumentFragment();
-
-	for (let r = 0; r < rows; r++) {
-		for (let c = 0; c < cols; c++) {
-			const cell = document.createElement("div");
-			cell.className = disabled.has(`${r},${c}`)
-				? "board-cell disabled"
-				: "board-cell";
-			df.appendChild(cell);
-		}
-	}
-
-	els.layoutGrid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-	els.layoutGrid.replaceChildren(df);
+	drawLayoutCanvas(null);
 }
 
 function applyBoardDraft() {
@@ -2006,55 +2000,197 @@ const QUALITY_COLOR = ["green", "blue", "purple", "gold", "red"].map(
 	(name) => `var(--color-${name})`,
 );
 
-// 把最优布局画到实时布局棋盘：品质着色 + 编号 + 法宝外边界加粗
-// board 默认取当前已应用棋盘，回溯时传入历史棋盘快照
+/** 实时布局棋盘：canvas 绘制 */
+// 格子边长（CSS px），与原 DOM 格子的 2em 一致
+const LAYOUT_CELL = 32;
+
+// 悬浮提示命中测试用的棋盘占用表（-1 = 空格/禁用）
+let layoutOwner = null;
+let layoutDims = { cols: 0, rows: 0 };
+
+// canvas 不认 var() 与 color-mix()，用探针元素把 CSS 颜色解析成 rgb()
+const colorProbe = document.createElement("div");
+colorProbe.style.cssText = "position:absolute;visibility:hidden";
+
+// 棋子描边环用的离屏画布，每次绘制复用
+const outlineOff = document.createElement("canvas");
+
+function resolveColor(cssColor) {
+	if (!colorProbe.parentNode) document.body.appendChild(colorProbe);
+	colorProbe.style.color = cssColor;
+	return getComputedStyle(colorProbe).color;
+}
+
+// 把布局画到 canvas：空格/禁用铺底 → 棋子连续填充 → 网格线（外框整圈收在
+// 画布内，内部线段只画在两侧都无棋子的位置）→ 棋子描边环（离屏生成整圈
+// 连续的 2px 描边，异件相邻处只有一条线）。
+// 分层绘制后空格子四周永远只有统一的浅灰网格线
+// result 为 null 时只画空棋盘；board 默认取当前已应用棋盘，回溯时传历史快照
+function drawLayoutCanvas(result, board = boardState) {
+	const { cols, rows, disabled } = board;
+	const owner = new Array(cols * rows).fill(-1);
+	if (result) {
+		result.insts.forEach((inst, i) =>
+			inst.cells.forEach((ci) => {
+				owner[ci] = i;
+			}),
+		);
+	}
+	layoutOwner = owner;
+	layoutDims = { cols, rows };
+
+	let canvas = els.layoutGrid.querySelector("canvas");
+	if (!canvas) {
+		canvas = document.createElement("canvas");
+		els.layoutGrid.replaceChildren(canvas);
+	}
+	// 按设备像素比放大画布再缩放回 CSS 尺寸，保证线条清晰
+	const dpr = window.devicePixelRatio || 1;
+	canvas.width = cols * LAYOUT_CELL * dpr;
+	canvas.height = rows * LAYOUT_CELL * dpr;
+	canvas.style.width = `${cols * LAYOUT_CELL}px`;
+	canvas.style.height = `${rows * LAYOUT_CELL}px`;
+	const ctx = canvas.getContext("2d");
+	ctx.scale(dpr, dpr);
+
+	const cssVar = (name) =>
+		getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+	const colors = {
+		grid: cssVar("--border-strong"),
+		disabled: cssVar("--color-gray"),
+		white: cssVar("--white"),
+		numShadow: cssVar("--cell-num-shadow"),
+		quality: QUALITY_COLOR.map((c) => resolveColor(c)),
+		// 所有棋子统一的描边色，比网格线略深
+		edge: cssVar("--piece-edge"),
+	};
+	const pieceAt = (r, c) =>
+		r >= 0 && c >= 0 && r < rows && c < cols ? owner[r * cols + c] : -1;
+
+	// 铺底：空格白、禁用格灰
+	for (let r = 0; r < rows; r++) {
+		for (let c = 0; c < cols; c++) {
+			ctx.fillStyle = disabled.has(`${r},${c}`)
+				? colors.disabled
+				: colors.white;
+			ctx.fillRect(c * LAYOUT_CELL, r * LAYOUT_CELL, LAYOUT_CELL, LAYOUT_CELL);
+		}
+	}
+
+	// 棋子：同件格子连续填充，内部不画任何线
+	if (result) {
+		result.insts.forEach((inst, i) => {
+			ctx.fillStyle = colors.quality[result.details[i].p.quality];
+			inst.cells.forEach((ci) => {
+				const r = Math.floor(ci / cols);
+				const c = ci % cols;
+				ctx.fillRect(c * LAYOUT_CELL, r * LAYOUT_CELL, LAYOUT_CELL, LAYOUT_CELL);
+			});
+		});
+	}
+
+	// 网格线：外框整圈收在画布内；内部线段只画在两侧都无棋子的位置
+	ctx.strokeStyle = colors.grid;
+	ctx.lineWidth = 1;
+	ctx.beginPath();
+	ctx.strokeRect(0.5, 0.5, cols * LAYOUT_CELL - 1, rows * LAYOUT_CELL - 1);
+	for (let r = 1; r < rows; r++) {
+		for (let c = 0; c < cols; c++) {
+			if (pieceAt(r - 1, c) < 0 && pieceAt(r, c) < 0) {
+				const y = r * LAYOUT_CELL + 0.5;
+				ctx.moveTo(c * LAYOUT_CELL, y);
+				ctx.lineTo((c + 1) * LAYOUT_CELL, y);
+			}
+		}
+	}
+	for (let c = 1; c < cols; c++) {
+		for (let r = 0; r < rows; r++) {
+			if (pieceAt(r, c - 1) < 0 && pieceAt(r, c) < 0) {
+				const x = c * LAYOUT_CELL + 0.5;
+				ctx.moveTo(x, r * LAYOUT_CELL);
+				ctx.lineTo(x, (r + 1) * LAYOUT_CELL);
+			}
+		}
+	}
+	ctx.stroke();
+
+	if (result) {
+		// 棋子轮廓：离屏画布上把棋子格子向外扩 1px 填满，再挖掉内部
+		// （与同件相邻的边不内收），得到整圈连续、均匀 2px 的描边环，
+		// 不会在拐点处断开；异件相邻时两侧描边环坐标重合，后画的覆盖
+		// 先画的，只剩一条线，不会叠加变粗
+		outlineOff.width = canvas.width;
+		outlineOff.height = canvas.height;
+		const octx = outlineOff.getContext("2d");
+		result.insts.forEach((inst, i) => {
+			octx.save();
+			octx.setTransform(dpr, 0, 0, dpr, 0, 0);
+			octx.clearRect(0, 0, cols * LAYOUT_CELL, rows * LAYOUT_CELL);
+			octx.fillStyle = "#000";
+			inst.cells.forEach((ci) => {
+				const r = Math.floor(ci / cols);
+				const c = ci % cols;
+				octx.fillRect(
+					c * LAYOUT_CELL - 1,
+					r * LAYOUT_CELL - 1,
+					LAYOUT_CELL + 2,
+					LAYOUT_CELL + 2,
+				);
+			});
+			octx.globalCompositeOperation = "destination-out";
+			inst.cells.forEach((ci) => {
+				const r = Math.floor(ci / cols);
+				const c = ci % cols;
+				// 棋盘边缘的边向外扩的部分被画布裁掉，内收 2px 补偿，
+				// 保持整圈描边视觉宽度一致
+				const l = pieceAt(r, c - 1) === i ? 0 : c === 0 ? 2 : 1;
+				const rt = pieceAt(r, c + 1) === i ? 0 : c === cols - 1 ? 2 : 1;
+				const t = pieceAt(r - 1, c) === i ? 0 : r === 0 ? 2 : 1;
+				const b = pieceAt(r + 1, c) === i ? 0 : r === rows - 1 ? 2 : 1;
+				octx.fillRect(
+					c * LAYOUT_CELL + l,
+					r * LAYOUT_CELL + t,
+					LAYOUT_CELL - l - rt,
+					LAYOUT_CELL - t - b,
+				);
+			});
+			octx.globalCompositeOperation = "source-in";
+			octx.fillStyle = colors.edge;
+			octx.fillRect(0, 0, cols * LAYOUT_CELL, rows * LAYOUT_CELL);
+			octx.restore();
+			ctx.drawImage(outlineOff, 0, 0, cols * LAYOUT_CELL, rows * LAYOUT_CELL);
+		});
+
+		// 编号：每格居中，白字带投影
+		ctx.font = `700 10px ${getComputedStyle(document.body).fontFamily}`;
+		ctx.textAlign = "center";
+		ctx.textBaseline = "middle";
+		ctx.fillStyle = colors.white;
+		ctx.shadowColor = colors.numShadow;
+		ctx.shadowOffsetY = 1;
+		ctx.shadowBlur = 2;
+		result.insts.forEach((inst, i) => {
+			inst.cells.forEach((ci) => {
+				const r = Math.floor(ci / cols);
+				const c = ci % cols;
+				ctx.fillText(
+					String(i + 1),
+					c * LAYOUT_CELL + LAYOUT_CELL / 2,
+					r * LAYOUT_CELL + LAYOUT_CELL / 2,
+				);
+			});
+		});
+		ctx.shadowColor = "transparent";
+		ctx.shadowOffsetY = 0;
+		ctx.shadowBlur = 0;
+	}
+}
+
+// 把最优布局画到实时布局棋盘；board 默认取当前已应用棋盘，回溯时传入历史棋盘快照
 function renderLayoutSolution(result, board = boardState) {
 	layoutShown = result; // 悬浮提示数据源
 	hideCellTip();
-	const { cols, rows, disabled } = board;
-	const owner = new Array(cols * rows).fill(-1);
-	result.insts.forEach((inst, i) =>
-		inst.cells.forEach((ci) => {
-			owner[ci] = i;
-		}),
-	);
-
-	const df = document.createDocumentFragment();
-	for (let r = 0; r < rows; r++) {
-		for (let c = 0; c < cols; c++) {
-			const ci = r * cols + c;
-			const cell = document.createElement("div");
-			cell.className = "board-cell";
-			if (disabled.has(`${r},${c}`)) {
-				cell.classList.add("disabled");
-			} else if (owner[ci] >= 0) {
-				const i = owner[ci];
-				const p = result.details[i].p;
-				cell.style.background = QUALITY_COLOR[p.quality];
-				// 悬浮提示据此索引查法宝信息
-				cell.dataset.inst = i;
-				const num = document.createElement("span");
-				num.className = "cell-num";
-				num.textContent = i + 1;
-				cell.appendChild(num);
-				// 与异件/空格/边界相邻的边加粗，同件内部格子间细线
-				[
-					[r > 0 ? ci - cols : -1, "Top"],
-					[r < rows - 1 ? ci + cols : -1, "Bottom"],
-					[c > 0 ? ci - 1 : -1, "Left"],
-					[c < cols - 1 ? ci + 1 : -1, "Right"],
-				].forEach(([ni, side]) => {
-					cell.style[`border${side}`] =
-						ni >= 0 && owner[ni] === i
-							? "1px solid var(--cell-inner-line)"
-							: "2px solid var(--cell-outline)";
-				});
-			}
-			df.appendChild(cell);
-		}
-	}
-	els.layoutGrid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-	els.layoutGrid.replaceChildren(df);
+	drawLayoutCanvas(result, board);
 	renderLegend(result);
 }
 
@@ -2134,23 +2270,46 @@ function showCellTip(cell) {
 	cellTip.style.top = `${top}px`;
 }
 
+// canvas 没有格子元素，把指针坐标换算成格子，构造 showCellTip 需要的伪格子对象
+function layoutCellFromPoint(clientX, clientY) {
+	const canvas = els.layoutGrid.querySelector("canvas");
+	if (!canvas || !layoutOwner) return null;
+	const rect = canvas.getBoundingClientRect();
+	const c = Math.floor((clientX - rect.left) / LAYOUT_CELL);
+	const r = Math.floor((clientY - rect.top) / LAYOUT_CELL);
+	if (r < 0 || c < 0 || r >= layoutDims.rows || c >= layoutDims.cols) {
+		return null;
+	}
+	const inst = layoutOwner[r * layoutDims.cols + c];
+	if (inst < 0) return null;
+	return {
+		dataset: { inst },
+		getBoundingClientRect: () => ({
+			left: rect.left + c * LAYOUT_CELL,
+			top: rect.top + r * LAYOUT_CELL,
+			right: rect.left + (c + 1) * LAYOUT_CELL,
+			bottom: rect.top + (r + 1) * LAYOUT_CELL,
+			width: LAYOUT_CELL,
+			height: LAYOUT_CELL,
+		}),
+	};
+}
+
 function cellTipInit() {
 	document.body.appendChild(cellTip);
-	els.layoutGrid.addEventListener("mouseover", (e) => {
-		const cell = e.target.closest(".board-cell");
-		if (cell && cell.dataset.inst !== undefined) showCellTip(cell);
+	els.layoutGrid.addEventListener("mousemove", (e) => {
+		const cell = layoutCellFromPoint(e.clientX, e.clientY);
+		if (cell) showCellTip(cell);
+		else hideCellTip();
 	});
-	els.layoutGrid.addEventListener("mouseout", (e) => {
-		const cell = e.target.closest(".board-cell");
-		// 在格子与其内部编号之间移动时保持显示
-		if (cell && !cell.contains(e.relatedTarget)) hideCellTip();
-	});
+	els.layoutGrid.addEventListener("mouseleave", hideCellTip);
 	// 触屏：点按格子显示，点按棋盘外任意处隐藏
 	els.layoutGrid.addEventListener(
 		"touchstart",
 		(e) => {
-			const cell = e.target.closest(".board-cell");
-			if (cell && cell.dataset.inst !== undefined) {
+			const t = e.touches[0];
+			const cell = layoutCellFromPoint(t.clientX, t.clientY);
+			if (cell) {
 				e.preventDefault();
 				showCellTip(cell);
 			}
@@ -4238,6 +4397,18 @@ function init() {
 	// 静态数量输入框统一换自定义步进器（动态创建的由各处自行包装）
 	document.querySelectorAll(".num-input").forEach(numStepper);
 	typeSelectInit();
+	[
+		[els.blockTableEl, els.blockAttrsToggle, "show-attrs"],
+		[els.blockTableEl, els.blockBonusToggle, "show-bonus"],
+		[els.blockTableEl, els.blockQuantityToggle, "show-quantity"],
+		[els.selectedTableEl, els.selectedAttrsToggle, "show-attrs"],
+		[els.selectedTableEl, els.selectedBonusToggle, "show-bonus"],
+		[els.selectedTableEl, els.selectedQuantityToggle, "show-quantity"],
+	].forEach(([table, toggle, cls]) => {
+		toggle.addEventListener("change", () => {
+			table.classList.toggle(cls, toggle.checked);
+		});
+	});
 	renderSelectedBlocks();
 	presetInit();
 	boardInit();
