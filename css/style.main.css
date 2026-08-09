@@ -321,7 +321,11 @@ main {
 
 .board-grid {
 	display: grid;
-	gap: 2px;
+	/* 两个棋盘统一样式：格子无缝拼接。外框只画上/左两边，
+	   右/下由最外圈格子的边补齐，网格线与外框同为 1px */
+	gap: 0;
+	border-top: 1px solid var(--border-strong);
+	border-left: 1px solid var(--border-strong);
 	width: max-content;
 	height: max-content;
 	/* flex 容器内用 margin:auto 居中，棋盘超出时仍可正常滚动 */
@@ -331,8 +335,10 @@ main {
 .board-cell {
 	width: 2em;
 	height: 2em;
-	border: 1px solid var(--border-strong);
-	border-radius: 3px;
+	/* 格子只画右/下两条边，相邻格子不叠线 */
+	border: 0;
+	border-right: 1px solid var(--border-strong);
+	border-bottom: 1px solid var(--border-strong);
 	background: var(--white);
 	cursor: pointer;
 	/* 布局棋盘的格内编号在格中居中 */
@@ -344,8 +350,11 @@ main {
 		border-color 0.15s;
 }
 
+/* 悬停高亮用 outline 画整圈，不占布局、不受单边边框限制 */
 .board-cell:hover {
 	border-color: var(--accent);
+	outline: 1px solid var(--accent);
+	outline-offset: -1px;
 }
 
 .board-cell.disabled {
@@ -353,14 +362,15 @@ main {
 	border-color: var(--color-gray);
 }
 
-/* 实时布局的棋盘为只读展示，无指针与悬停态 */
-.layout-grid .board-cell {
-	cursor: default;
-	border-radius: 0;
+/* 实时布局棋盘：canvas 绘制，网格/棋子/描边分层渲染，只读无指针态 */
+.layout-grid {
+	width: max-content;
+	height: max-content;
+	margin: auto;
 }
 
-.layout-grid .board-cell:hover {
-	border-color: var(--border-strong);
+.layout-grid canvas {
+	display: block;
 }
 
 /* 实时布局中同一法宝的格子连续铺开，边界由渲染器按物品统一绘制 */
@@ -419,15 +429,6 @@ main {
 .switch-field input:disabled + .switch-track {
 	opacity: 0.5;
 	cursor: not-allowed;
-}
-
-.cell-num {
-	font-size: 0.62em;
-	font-weight: 700;
-	line-height: 1;
-	color: var(--white);
-	text-shadow: 0 1px 2px var(--cell-num-shadow);
-	pointer-events: none;
 }
 
 /* 布局棋盘下方图例：编号 -> 法宝全名，自动换行平铺 */

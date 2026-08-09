@@ -12,6 +12,7 @@
 
 ## UI Behavior
 
+- The real-time layout board is drawn on a `<canvas>` (base fill, grid lines, piece fills, separators, and piece outlines are layered); the board-config grid stays DOM-based.
 - The real-time layout must keep cells belonging to one item visually continuous and use a light separator between different items.
 - The item and selected-item tables use independent optional-column checkboxes; the optional columns start hidden.
 
