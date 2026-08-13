@@ -13,7 +13,8 @@
 
 - Treat `data/` as generated output. Update the generator inputs under `tools/` and run the documented generators instead of hand-editing generated data.
 - Keep the screenshot recognition files and OpenCV loader compatible with the browser-only runtime.
-- `p` in the text atlas generates `previewAdjacent`; it is restricted to 1x1 neighbor bonuses and must remain a display-only estimate, outside Worker scoring, score bounds, totals, and layout ordering.
+- On a CSP-protected deployment, `script-src` must allow `blob:`, `'wasm-unsafe-eval'`, and `'unsafe-eval'`; OpenCV uses Blob injection, WASM, and embind's `new Function(...)` bindings.
+- `p` in the text atlas generates `previewAdjacent`; it is restricted to 1x1 neighbor bonuses. When the user enables the adjacent-bonus switch, include it consistently in main-thread totals, Worker scoring, score bounds, and layout ordering; when disabled, it contributes nothing.
 
 ## UI Behavior
 
@@ -23,6 +24,7 @@
 ## Validation
 
 - Run `node --check script/main.index.js` after changing the main script.
+- Run `node tools/test-adjacent-bonus.js` after changing adjacent-bonus scoring.
 - Verify user-visible changes by opening `index.html` in a browser.
 
 ## Provenance and License

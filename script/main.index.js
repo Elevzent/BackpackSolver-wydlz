@@ -476,7 +476,7 @@ function updateSelStats() {
 const PRESET_INDEX_KEY = "fabao-presets:index";
 const PRESET_DATA_PREFIX = "fabao-presets:data:";
 const PRESET_MAX = 40;
-const RESULT_VERSION = 5; // 相邻加成移出求解评分，改为实时布局可选预估
+const RESULT_VERSION = 6; // 相邻加成开关会改变总分、排序和 Worker 求解评分
 
 /** 历史最优：回溯 */
 // 当前已选列表下的历史最优结果（含日志与棋盘快照）：多次计算只保留最高分。
@@ -492,13 +492,14 @@ const currentWeights = () => {
 	return w.every((x) => x === 0) ? [1, 1, 1] : w;
 };
 
-// 历史最优的计算权重或目标模式与当前设置不一致（结果对应的是另一个问题）
+// 历史最优的计算权重、目标模式或相邻加成开关与当前设置不一致（结果对应的是另一个问题）
 // 旧缓存没有 fillFirst 字段，按属性优先对待（旧结果本就是在属性优先下算的）
 const bestIsStale = () =>
 	!!memBest &&
 	(memBest.v !== RESULT_VERSION ||
 		String(currentWeights()) !== String(memBest.weights) ||
-		!!memBest.fillFirst !== els.fillFirst.checked);
+		!!memBest.fillFirst !== els.fillFirst.checked ||
+		!!memBest.useAdjacentBonus !== els.adjacentPreview.checked);
 
 // 无历史最优或计算进行中时禁用（防止回溯内容被实时推送的新最优覆盖）
 function updateRecallBtn() {
@@ -527,10 +528,11 @@ function captureBest() {
 	}));
 	const { ctx, ...result } = engine.best.result;
 	return {
-		v: RESULT_VERSION, // 评分口径版本：相邻加成不计入求解评分；旧缓存口径不可比
+		v: RESULT_VERSION, // 评分口径版本：相邻加成开关会影响求解评分；旧缓存口径不可比
 		score: engine.best.score,
 		weights: engine.snap.weights.slice(), // 判定多次计算的分数是否可比
 		fillFirst: !!engine.snap.fillFirst, // 判定目标模式（填满/属性优先）是否一致
+		useAdjacentBonus: !!engine.snap.useAdjacentBonus,
 		result,
 		logs,
 		status: els.logStatus.textContent,
@@ -827,9 +829,9 @@ const calcState = { running: false };
 // 计算目标权重：0 表示不关心该属性
 const calcWeights = { atk: 0, def: 0, hp: 0 };
 
-// 快速求解模式固定的耗时上限（秒），不可调整
+// 快速模式固定的耗时上限（秒），不可调整
 const QUICK_SOLVE_SEC = 3;
-// 混合最优模式下用户自设的耗时上限
+// 深度模式下用户自设的耗时上限
 let lnsTimeLimitSec = 30;
 
 function setCalcRunning(running) {
@@ -861,8 +863,8 @@ function setCalcRunning(running) {
 //
 // 评分规则（与需求对齐）：
 //   相邻 = 两件法宝任意格子上下左右接触（对角不算，同件内部不算）
-//   评分属性 = 基础值 × (1 + 自身加成% × 相邻同五行件数)
-//   标注为 previewAdjacent 的 1x1 相邻加成仅供实时布局悬浮提示预估，不进入评分。
+//   评分属性 = 基础值 × (1 + 自身加成% × 相邻同五行件数 + 相邻 1x1 加成%)
+//   相邻 1x1 加成仅在 useAdjacentBonus 开启时生效；同一件相邻法宝多边接触只计一次。
 //   Min-Max 标准化 = 最终属性 ÷ 该属性理论极值（buildSnapshot 的 attrsMax：
 //     求和上界与密度×7×6 参考上界取较紧者，拍平攻/防/血量级差）
 //   总分 = Σ 已摆法宝 Σ属性 (标准化完成度 × 用户权重)，先标准化再加权，两层不合并；
@@ -911,10 +913,14 @@ function engPrepare(snap) {
 		const base = [it.attrs[0] || 0, it.attrs[1] || 0, it.attrs[2] || 0];
 		const pct = it.attrs[3] || 0;
 		const selfPct = [0, 0, 0];
-		const previewAdjPct = [0, 0, 0];
+		const adjacentPct = [0, 0, 0];
+		const adjacentPctBound =
+			snap.useAdjacentBonus && snap.adjacentPctBound
+				? snap.adjacentPctBound[it.type] || [0, 0, 0]
+				: [0, 0, 0];
 		if (it.bonus[1] === 1) selfPct[it.bonus[0]] = pct / 100;
 		if (it.previewAdjacent && s.area === 1 && it.bonus[1] === 2) {
-			previewAdjPct[it.bonus[0]] = pct / 100;
+			adjacentPct[it.bonus[0]] = pct / 100;
 		}
 		return {
 			idx,
@@ -927,13 +933,14 @@ function engPrepare(snap) {
 			area: s.area,
 			per,
 			base,
-			// 加权基础分（贪心排序用）：base × invMax 是 Min-Max 标准化，× weights 是加权，两层不合并
+			// 加权基础分（贪心排序用）：相邻加成开启时加入候选池的乐观提供者比例，
+			// 让初始布局更早优先安排可受益目标；真实增量仍由 fastContrib 结算。
 			wbase:
-				base[0] * invMax[0] * weights[0] +
-				base[1] * invMax[1] * weights[1] +
-				base[2] * invMax[2] * weights[2],
+				base[0] * (1 + adjacentPctBound[0]) * invMax[0] * weights[0] +
+				base[1] * (1 + adjacentPctBound[1]) * invMax[1] * weights[1] +
+				base[2] * (1 + adjacentPctBound[2]) * invMax[2] * weights[2],
 			selfPct,
-			previewAdjPct,
+			adjacentPct,
 			max: it.max,
 		};
 	});
@@ -968,6 +975,8 @@ function engPrepare(snap) {
 		byMin,
 		weights,
 		invMax,
+		useAdjacentBonus: !!snap.useAdjacentBonus,
+		adjacentPctBound: snap.adjacentPctBound || {},
 		minArea: Math.min.apply(
 			null,
 			items.map((p) => p.area),
@@ -998,18 +1007,26 @@ function engContrib(ctx, occ, insts, i) {
 	const p = ctx.items[insts[i].item];
 	const adj = engAdjIds(ctx, occ, insts[i].cells, i);
 	let same = 0;
+	let adjacent0 = 0;
+	let adjacent1 = 0;
+	let adjacent2 = 0;
 	adj.forEach((j) => {
 		const q = ctx.items[insts[j].item];
 		if (q.ftype !== p.ftype) return;
 		same++;
+		if (ctx.useAdjacentBonus) {
+			adjacent0 += q.adjacentPct[0];
+			adjacent1 += q.adjacentPct[1];
+			adjacent2 += q.adjacentPct[2];
+		}
 	});
 	// 先算各属性原始最终值，再 Min-Max 标准化（× invMax 即 ÷ 理论极值），最后乘用户权重：
 	// 保持「先标准化（除法消除量纲）→ 再加权（表达设计意图）」两层结构，不合并成单层权重。
 	// 注意：这是退火最内层热函数（每次移动对每个受影响法宝调用），
 	// 必须零分配——用三个标量而不是数组，否则 GC 压力会拖垮迭代速度
-	const r0 = p.base[0] * (1 + p.selfPct[0] * same);
-	const r1 = p.base[1] * (1 + p.selfPct[1] * same);
-	const r2 = p.base[2] * (1 + p.selfPct[2] * same);
+	const r0 = p.base[0] * (1 + p.selfPct[0] * same + adjacent0);
+	const r1 = p.base[1] * (1 + p.selfPct[1] * same + adjacent1);
+	const r2 = p.base[2] * (1 + p.selfPct[2] * same + adjacent2);
 	return (
 		r0 * ctx.invMax[0] * ctx.weights[0] +
 		r1 * ctx.invMax[1] * ctx.weights[1] +
@@ -1038,36 +1055,32 @@ function engScoreLayout(snap, layout) {
 		const p = ctx.items[inst.item];
 		const adj = engAdjIds(ctx, occ, inst.cells, i);
 		let same = 0;
-		const previewRecv = [0, 0, 0];
-		const previewRecvDetail = [[], [], []];
+		const adjacentRecv = [0, 0, 0];
+		const adjacentRecvDetail = [[], [], []];
 		adj.forEach((j) => {
 			const q = ctx.items[insts[j].item];
 			if (q.ftype !== p.ftype) return;
 			same++;
 			for (let a = 0; a < 3; a++) {
-				if (q.previewAdjPct[a] > 0) {
-					previewRecv[a] += q.previewAdjPct[a];
-					previewRecvDetail[a].push({
+				if (ctx.useAdjacentBonus && q.adjacentPct[a] > 0) {
+					adjacentRecv[a] += q.adjacentPct[a];
+					adjacentRecvDetail[a].push({
 						name: q.name,
-						pct: q.previewAdjPct[a] * 100,
+						pct: q.adjacentPct[a] * 100,
 					});
 				}
 			}
 		});
 		const finals = [0, 1, 2].map(
-			(j) => p.base[j] * (1 + p.selfPct[j] * same),
-		);
-		const previewFinals = finals.map(
-			(value, j) => value + p.base[j] * previewRecv[j],
+			(j) => p.base[j] * (1 + p.selfPct[j] * same + adjacentRecv[j]),
 		);
 		return {
 			inst,
 			p,
 			same,
-			previewRecv,
-			previewRecvDetail,
+			adjacentRecv,
+			adjacentRecvDetail,
 			finals,
-			previewFinals,
 		};
 	});
 
@@ -1203,6 +1216,9 @@ function engWorkerMain() {
 				neighborStamp = 1;
 			}
 			let same = 0;
+			let adjacent0 = 0;
+			let adjacent1 = 0;
+			let adjacent2 = 0;
 			const cells = units[id].cells;
 			for (let i = 0; i < cells.length; i++) {
 				const ci = cells[i];
@@ -1212,34 +1228,66 @@ function engWorkerMain() {
 					const j = occ[ci - ctx.cols];
 					if (j >= 0 && j !== id && neighborMark[j] !== neighborStamp) {
 						neighborMark[j] = neighborStamp;
-						if (ctx.items[units[j].item].ftype === p.ftype) same++;
+						const q = ctx.items[units[j].item];
+						if (q.ftype === p.ftype) {
+							same++;
+							if (ctx.useAdjacentBonus) {
+								adjacent0 += q.adjacentPct[0];
+								adjacent1 += q.adjacentPct[1];
+								adjacent2 += q.adjacentPct[2];
+							}
+						}
 					}
 				}
 				if (r + 1 < ctx.rows) {
 					const j = occ[ci + ctx.cols];
 					if (j >= 0 && j !== id && neighborMark[j] !== neighborStamp) {
 						neighborMark[j] = neighborStamp;
-						if (ctx.items[units[j].item].ftype === p.ftype) same++;
+						const q = ctx.items[units[j].item];
+						if (q.ftype === p.ftype) {
+							same++;
+							if (ctx.useAdjacentBonus) {
+								adjacent0 += q.adjacentPct[0];
+								adjacent1 += q.adjacentPct[1];
+								adjacent2 += q.adjacentPct[2];
+							}
+						}
 					}
 				}
 				if (c > 0) {
 					const j = occ[ci - 1];
 					if (j >= 0 && j !== id && neighborMark[j] !== neighborStamp) {
 						neighborMark[j] = neighborStamp;
-						if (ctx.items[units[j].item].ftype === p.ftype) same++;
+						const q = ctx.items[units[j].item];
+						if (q.ftype === p.ftype) {
+							same++;
+							if (ctx.useAdjacentBonus) {
+								adjacent0 += q.adjacentPct[0];
+								adjacent1 += q.adjacentPct[1];
+								adjacent2 += q.adjacentPct[2];
+							}
+						}
 					}
 				}
 				if (c + 1 < ctx.cols) {
 					const j = occ[ci + 1];
 					if (j >= 0 && j !== id && neighborMark[j] !== neighborStamp) {
 						neighborMark[j] = neighborStamp;
-						if (ctx.items[units[j].item].ftype === p.ftype) same++;
+						const q = ctx.items[units[j].item];
+						if (q.ftype === p.ftype) {
+							same++;
+							if (ctx.useAdjacentBonus) {
+								adjacent0 += q.adjacentPct[0];
+								adjacent1 += q.adjacentPct[1];
+								adjacent2 += q.adjacentPct[2];
+							}
+						}
 					}
 				}
 			}
-			const r0 = p.base[0] * (1 + p.selfPct[0] * same);
-			const r1 = p.base[1] * (1 + p.selfPct[1] * same);
-			const r2 = p.base[2] * (1 + p.selfPct[2] * same);
+			const r0 = p.base[0] * (1 + p.selfPct[0] * same + adjacent0);
+			const r1 = p.base[1] * (1 + p.selfPct[1] * same + adjacent1);
+			const r2 = p.base[2] * (1 + p.selfPct[2] * same + adjacent2);
 			return (
 				r0 * ctx.invMax[0] * ctx.weights[0] +
 				r1 * ctx.invMax[1] * ctx.weights[1] +
@@ -1267,12 +1315,18 @@ function engWorkerMain() {
 		const LNS_PERIOD = 3000;
 		const LNS_REPAIR_MS = 300;
 		const LNS_REPAIR_NODES = 300000;
-		// 每件法宝的贡献上界：基础 × (1 + 自身加成 × 周长)，
+		// 每件法宝的贡献上界：基础 × (1 + 自身加成 × 周长 + 全候选池同系相邻提供者加成)，
 		// 再按「先标准化 → 再加权」折算（两种模式的 fillW 都由此推导，因此都算）
 		const maxC = items.map((p) => {
 			let s = 0;
 			for (let j = 0; j < 3; j++) {
-				const raw = p.base[j] * (1 + p.selfPct[j] * p.per);
+				const raw =
+					p.base[j] *
+					(1 +
+						p.selfPct[j] * p.per +
+						(ctx.useAdjacentBonus
+							? (ctx.adjacentPctBound[p.ftype] || [0, 0, 0])[j]
+							: 0));
 				s += raw * ctx.invMax[j] * ctx.weights[j];
 			}
 			return s;
@@ -2044,6 +2098,20 @@ function buildSnapshot() {
 			max: it.nums,
 		};
 	});
+	const useAdjacentBonus = els.adjacentPreview.checked;
+	const adjacentPctBound = {};
+	if (useAdjacentBonus) {
+		selectedBlocks.forEach((it) => {
+			const attrs = getItemAttrs(it);
+			const area = it.shape.reduce(
+				(s, row) => s + row.filter((v) => v).length,
+				0,
+			);
+			if (!it.previewAdjacent || area !== 1 || it.bonus[1] !== 2) return;
+			if (!adjacentPctBound[it.type]) adjacentPctBound[it.type] = [0, 0, 0];
+			adjacentPctBound[it.type][it.bonus[0]] += (attrs[3] || 0) * it.nums / 100;
+		});
+	}
 	// 各属性理论极值（Min-Max 标准化的分母，仅用于拍平不同属性间的量级差）。
 	// 单件乐观上界：相邻同五行件数 ≤ 形状周边空格数 gridCount，故自身加成最多吃
 	// gridCount 次：base × (1 + 自身加成 × gridCount / 100)
@@ -2063,8 +2131,11 @@ function buildSnapshot() {
 			0,
 		);
 
+		const providerBound = adjacentPctBound[it.type] || [0, 0, 0];
 		for (let j = 0; j < 3; j++) {
-			const val = attrs[j] * (1 + (gridCount * bonusSelf[j]) / 100);
+			const val =
+				attrs[j] *
+				(1 + (gridCount * bonusSelf[j]) / 100 + providerBound[j]);
 			sumMax[j] += val * it.nums;
 			densMax[j] = Math.max(densMax[j], val / area);
 		}
@@ -2078,7 +2149,16 @@ function buildSnapshot() {
 	const attrsMax = [0, 1, 2].map((j) =>
 		Math.ceil(Math.min(sumMax[j], densMax[j] * refCells)),
 	);
-	return { cols, rows, disabled, items, weights, attrsMax };
+	return {
+		cols,
+		rows,
+		disabled,
+		items,
+		weights,
+		attrsMax,
+		useAdjacentBonus,
+		adjacentPctBound,
+	};
 }
 
 /** 计算：布局结果与日志渲染 */
@@ -2187,21 +2267,20 @@ function showCellTip(cell) {
 	const labels = ["攻击", "防御", "血量"];
 	const fmt3 = (arr) => arr.map((v, j) => `${labels[j]}${fmtNum(v)}`).join("/");
 	const bonusParts = [];
-	const previewRecvDetail = d.previewRecvDetail || [[], [], []];
-	const previewFinals = d.previewFinals || d.finals;
+	const adjacentRecvDetail = d.adjacentRecvDetail || [[], [], []];
 	for (let j = 0; j < 3; j++) {
 		if (p.selfPct[j] > 0 && d.same > 0) {
 			bonusParts.push(
 				`自身${labels[j]}+${Math.round(p.selfPct[j] * 100 * d.same)}%`,
 			);
 		}
-		if (els.adjacentPreview.checked) {
-			const previewPct = previewRecvDetail[j].reduce(
+		if (layoutShown.ctx.useAdjacentBonus) {
+			const adjacentPct = adjacentRecvDetail[j].reduce(
 				(s, rd) => s + rd.pct,
 				0,
 			);
-			if (previewPct > 0) {
-				bonusParts.push(`相邻预估${labels[j]}+${Math.round(previewPct)}%`);
+			if (adjacentPct > 0) {
+				bonusParts.push(`相邻${labels[j]}+${Math.round(adjacentPct)}%`);
 			}
 		}
 	}
@@ -2209,7 +2288,7 @@ function showCellTip(cell) {
 		`${p.name}（${p.ftype}·${utils.getQualityText(p.quality)}）`,
 		`基础: ${fmt3(p.base)}`,
 		`加成: ${bonusParts.length ? bonusParts.join("，") : "无"}`,
-		`${els.adjacentPreview.checked ? "布局预估" : "最终"}: ${fmt3(els.adjacentPreview.checked ? previewFinals : d.finals)}`,
+		`最终: ${fmt3(d.finals)}`,
 	].join("\n");
 	// 先显示再测量：优先放格子上方，空间不足放下方，横向不超出视口
 	cellTip.hidden = false;
@@ -2276,12 +2355,12 @@ function startCalc() {
 
 	if (snap.mode === "lns") {
 		logLine(
-			`混合最优模式：${workerCount} 个线程独立退火，周期性摧毁-精确修复（LNS），取全局最优`,
+			`深度模式：${workerCount} 个线程独立退火，周期性摧毁-精确修复（LNS），取全局最优`,
 			"log-sys",
 		);
 	} else {
 		logLine(
-			`快速求解模式：${workerCount} 个线程独立退火，${QUICK_SOLVE_SEC} 秒限时，取全局最优`,
+			`快速模式：${workerCount} 个线程独立退火，${QUICK_SOLVE_SEC} 秒限时，取全局最优`,
 			"log-sys",
 		);
 	}
@@ -2329,7 +2408,7 @@ function startCalc() {
 		);
 	}
 	logLine(
-		`开始计算：${snap.mode === "lns" ? "混合最优" : "快速求解"}模式，目标 ${snap.fillFirst ? "填满优先" : "属性优先"}，${workerCount} 线程，已选 ${totalUnits} 件，可用格 ${freeCells}，权重 攻${fmtNum(snap.weights[0])}/防${fmtNum(snap.weights[1])}/血${fmtNum(snap.weights[2])}，耗时上限 ${engine.timeLimitSec > 0 ? engine.timeLimitSec + " 秒" : "不限"}`,
+		`开始计算：${snap.mode === "lns" ? "深度" : "快速"}模式，目标 ${snap.fillFirst ? "填满优先" : "属性优先"}，${workerCount} 线程，已选 ${totalUnits} 件，可用格 ${freeCells}，权重 攻${fmtNum(snap.weights[0])}/防${fmtNum(snap.weights[1])}/血${fmtNum(snap.weights[2])}，耗时上限 ${engine.timeLimitSec > 0 ? engine.timeLimitSec + " 秒" : "不限"}`,
 		"log-sys",
 	);
 }
@@ -2359,7 +2438,8 @@ function stopCalc(reason, statusText) {
 			!!memBest &&
 			memBest.v === RESULT_VERSION &&
 			String(engine.snap.weights) === String(memBest.weights) &&
-			!!memBest.fillFirst === !!engine.snap.fillFirst;
+			!!memBest.fillFirst === !!engine.snap.fillFirst &&
+			!!memBest.useAdjacentBonus === !!engine.snap.useAdjacentBonus;
 		const oldFilled = sameProblem
 			? memBest.result.insts.reduce((s, ins) => s + ins.cells.length, 0)
 			: -1;
@@ -2436,6 +2516,11 @@ function updateStatusLine() {
 }
 
 function calcInit() {
+	// 线程数：下限 2、默认 2、上限 max(4, 逻辑核数-1)，运行中锁定
+	const maxWorkers = Math.max(4, (navigator.hardwareConcurrency || 4) - 1);
+	els.workerCount.max = maxWorkers;
+	els.workerMaxHint.textContent = `最大支持 ${maxWorkers} 线程（根据设备性能自动设定）`;
+
 	const bindWeightInput = (ipt, key) => {
 		ipt.addEventListener("change", () => {
 			const val = Math.min(99, Math.max(0, Number(ipt.value) || 0));
@@ -2458,25 +2543,28 @@ function calcInit() {
 			: "属性优先";
 		if (bestIsStale()) dropBest();
 	});
+	els.adjacentPreview.addEventListener("change", () => {
+		if (bestIsStale()) dropBest();
+	});
 
-	// 模式切换：快速求解固定 3 秒限时且隐藏耗时上限设置；
-	// 混合最优恢复用户自设的耗时上限
+	// 模式切换：快速固定 3 秒限时且隐藏耗时上限设置；
+	// 深度恢复用户自设的耗时上限
 	const applyModeUI = () => {
 		const isLns = els.modeSelect.value === "lns";
 		els.timeLimitField.hidden = !isLns;
 		els.timeLimitHint.hidden = !isLns;
-		els.modeHint.innerHTML = `<p class="${isLns ? "" : "active"}">快速求解：${QUICK_SOLVE_SEC} 秒内给出较优布局</p><p class="${isLns ? "active" : ""}">混合最优：多算法结合，耗时越长越接近最优</p>`;
+		els.modeHint.innerHTML = `<p class="${isLns ? "" : "active"}">快速：${QUICK_SOLVE_SEC} 秒内给出较优布局</p><p class="${isLns ? "active" : ""}">深度：多算法结合，耗时越长越接近最优</p>`;
 		engine.timeLimitSec = isLns ? lnsTimeLimitSec : QUICK_SOLVE_SEC;
+		if (isLns) {
+			els.workerCount.value = maxWorkers;
+			engine.workerCount = maxWorkers;
+		}
 	};
 	els.modeSelect.addEventListener("change", applyModeUI);
 	applyModeUI();
 
 	els.recallBtn.addEventListener("click", recallBest);
 
-	// 线程数：下限 2、默认 2、上限 max(4, 逻辑核数-1)，运行中锁定
-	const maxWorkers = Math.max(4, (navigator.hardwareConcurrency || 4) - 1);
-	els.workerCount.max = maxWorkers;
-	els.workerMaxHint.textContent = `最大支持 ${maxWorkers} 线程（根据设备性能自动设定）`;
 	els.workerCount.addEventListener("change", () => {
 		const val = Math.min(
 			maxWorkers,
@@ -2486,7 +2574,7 @@ function calcInit() {
 		engine.workerCount = val;
 	});
 
-	// 耗时上限（秒）：0 表示不限，运行中锁定；仅混合最优模式可调
+	// 耗时上限（秒）：0 表示不限，运行中锁定；仅深度模式可调
 	els.timeLimit.addEventListener("change", () => {
 		const val = Math.min(99999, Math.max(0, Number(els.timeLimit.value) || 0));
 		els.timeLimit.value = val;

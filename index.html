@@ -201,8 +201,8 @@
 					<span class="cfg-field">
 						<label for="calc-mode">模式：</label>
 						<select id="calc-mode" class="mode-select">
-							<option value="heuristic">快速求解</option>
-							<option value="lns">混合最优</option>
+							<option value="heuristic">快速</option>
+							<option value="lns">深度</option>
 						</select>
 					</span>
 					<span class="board-hint mode-hint"></span>
@@ -215,7 +215,7 @@
 						<label class="cfg-field switch-field">
 							<input type="checkbox" class="adjacent-preview" />
 							<span class="switch-track"></span>
-							<span>相邻加成预估</span>
+							<span>计入相邻加成</span>
 						</label>
 						<span class="cfg-field">
 							<label for="worker-count">线程：</label>
@@ -228,7 +228,7 @@
 						</span>
 					</div>
 					<span class="board-hint adjacent-preview-hint"
-						>开启后，实时布局会将标注的 1x1 相邻加成换算到周围同系法宝的对应属性（伤害加成为攻击力）。仅作局部预估展示，不计入总分或影响求解排序。</span
+						>开启后，标注的 1x1 相邻加成会按相邻同系法宝的基础属性折算（伤害加成为攻击力），并计入总属性、排序和求解评分。多个加成可叠加；同一件法宝多边接触只计算一次。</span
 					>
 					<span class="board-hint worker-max-hint"></span>
 					<span class="cfg-field time-limit-field">

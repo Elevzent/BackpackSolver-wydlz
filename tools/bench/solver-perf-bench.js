@@ -12,6 +12,7 @@ const BLOCKS = JSON.parse(fs.readFileSync(path.join(ROOT, "data/blocks.json"), "
 const RUN_MS = 5000;
 const WARMUP_MS = 1000;
 const RUNS = 3;
+const USE_ADJACENT_BONUS = process.env.USE_ADJACENT_BONUS === "1";
 
 function extractFunction(source, name) {
 	const start = source.indexOf(`function ${name}(`);
@@ -120,6 +121,8 @@ function buildSnapshot() {
 		attrsMax: [0, 1, 2].map((i) => Math.ceil(Math.min(sumMax[i], densityMax[i] * 42))),
 		mode: "heuristic",
 		fillFirst: true,
+		useAdjacentBonus: USE_ADJACENT_BONUS,
+		adjacentPctBound: USE_ADJACENT_BONUS ? { 金: [1.4, 0, 0] } : {},
 		timeLimitSec: 0,
 	};
 }
@@ -180,6 +183,7 @@ async function runOnce(seed) {
 	for (let i = 0; i < RUNS; i++) runs.push(await runOnce(0x1a2b3c4d + i));
 	const result = {
 		fixture: "7x6 full grid, 7x 重金破阵矛 + 14x 蕴金戒",
+		useAdjacentBonus: USE_ADJACENT_BONUS,
 		runMs: RUN_MS,
 		warmupMs: WARMUP_MS,
 		runs,
