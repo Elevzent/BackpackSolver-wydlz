@@ -3,18 +3,18 @@
  * "===" 用于分割大类
  * "---" 用于分割普通法宝和红法宝，请按顺序书写
  * 普通法宝示例：
- * 法宝名称，[形状：1，2一，2i，3一，3i，3j，3fj，4o，4i，4j，4fj，5z](数字代表格数，一代表横排，i 代表竖排，o 为正方形，f 代表反转 180 度，)，[作用域：z/l](自身/邻接对象，为空代表没有加成)，[加成类型：a/d/h](攻击/防御/血量，为空默认取a)
+ * 法宝名称，[形状：1，2一，2i，3一，3i，3j，3fj，4o，4i，4j，4fj，5z](数字代表格数，一代表横排，i 代表竖排，o 为正方形，f 代表反转 180 度，)，[作用域：z/l](自身/邻接对象，为空代表没有加成)，[加成类型：a/d/h](攻击/防御/血量，为空默认取a)，[布局预估：p](仅 1x1 相邻加成，实时布局可选展示)
  * 攻击，防御，血量，加成值（没有的可以留空）(共四行，对应绿-蓝-紫-金四个品质)
  * 红法宝示例：
  * 同上，只是属性值只有一行了
  */
 const str = `金
 ---
-蕴金戒，1
-6，，113
-9，，285
-13，，585
-20，，1135
+蕴金戒，1，l，a，p
+6，，113，2
+9，，285，4
+13，，585，6
+20，，1135，10
 分金刀，2一
 12，，225
 19，，520
@@ -566,7 +566,7 @@ str.split("\n").forEach((rawLine, lineIdx) => {
 	const isHeader =
 		shapeMatch && parts[0] !== "" && Number.isNaN(Number(parts[0]));
 	if (isHeader) {
-		const [name, , scopeCode, bonusCode] = parts;
+		const [name, , scopeCode, bonusCode, previewCode] = parts;
 		const suffixName = shapeMatch[2] ? SHAPE_SUFFIX[shapeMatch[2]] : "点";
 		const shapeKey = `${"零一两三四五六七八九十"[toInt(shapeMatch[1])]}格/${suffixName}`;
 		const shape = shapes[shapeKey];
@@ -580,7 +580,8 @@ str.split("\n").forEach((rawLine, lineIdx) => {
 				: [0, 0];
 		if (
 			(scopeCode && !SCOPE_MAP[scopeCode]) ||
-			(bonusCode && !(bonusCode in BONUS_TYPE_MAP))
+			(bonusCode && !(bonusCode in BONUS_TYPE_MAP)) ||
+			(previewCode && previewCode !== "p")
 		) {
 			warnings.push(
 				`第 ${lineNo} 行：未知的作用域/加成代号（${name}）-> ${line}`,
@@ -588,6 +589,7 @@ str.split("\n").forEach((rawLine, lineIdx) => {
 		}
 		curEntry = {
 			bonus,
+			...(previewCode === "p" ? { previewAdjacent: true } : {}),
 			value: curSection === "normal" ? [] : null,
 			shape,
 		};

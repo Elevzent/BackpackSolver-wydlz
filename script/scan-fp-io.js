@@ -8,7 +8,7 @@
  *
  * 注意：本函数重新生成全文，各段头部的详细校准依据注释会被压缩为通用说明行。
  * 需保留详细注释的写回应走文本级局部替换（实现：tools/bench/lib/refs-section-io.js）。 */
-var SCAN_FP_IO_QUALITY_NAMES = ["一", "二", "三", "四", "五"];
+var SCAN_FP_IO_QUALITY_NAMES = ["绿", "蓝", "紫", "金", "红"];
 
 /** 单条指纹条目序列化（SCAN_FP_REFS 组内元素） */
 function scanFpRefEntryLines(en) {
@@ -17,7 +17,7 @@ function scanFpRefEntryLines(en) {
 		`\t\t\tname: "${en.name}",`,
 		`\t\t\tquality: ${en.quality},${
 			en.quality != null
-				? ` // ${SCAN_FP_IO_QUALITY_NAMES[en.quality]}阶样本`
+				? ` // ${SCAN_FP_IO_QUALITY_NAMES[en.quality]}品质样本`
 				: " // 通用模板"
 		}`,
 		`\t\t\tmaxDiff: ${en.maxDiff},`,
@@ -56,7 +56,7 @@ function scanFpRefsSerialize({ dotTypes, scanRec, fpGroups, typeModel, pixelMode
 		"// 仅供无 sig 的旧条目回退。组级提取条目另带 sigVar（逐块类内离散度 MAD）/ samples",
 		"// （聚合样本数）。maxDiff 为组级建议值（组内最小类间 diff 的一半，下限 5，无可比项 25），",
 		"// 同组条目同一值，缺失时匹配端回退 25。",
-		"// quality: 0~4 对应 一~五阶；图标跨品质一致的条目可改为 null 作为该组通用模板。",
+		"// quality: 0~4 对应 绿/蓝/紫/金/红；图标跨品质一致的条目可改为 null 作为该组通用模板。",
 		"// 匹配差值超过 maxDiff 时不猜名，低置信交人工选择。",
 		...scanFpRefsSectionLines(fpGroups),
 	];

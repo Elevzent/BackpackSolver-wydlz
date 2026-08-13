@@ -20,8 +20,8 @@ const fpDiff = scanFpDiff;
 const sampleDotHues = scanDotHues;
 const sampleDiskHues = scanDiskHues; // 元素校准分桶采样（圆盘全像素，2026-08-07 Step 4 起）
 const detectBoard = scanDetectBoard;
-const QUALITY_NAMES = ["一", "二", "三", "四", "五"];
-// 品质配色（同主界面 main.js：一阶绿 -> 五阶红），用于 hover 浮层品阶文字着色
+const QUALITY_NAMES = ["绿", "蓝", "紫", "金", "红"];
+// 品质配色（同主界面 main.js：绿 -> 红），用于 hover 浮层品质文字着色
 const QUALITY_TIP_COLORS = [
 	"#4ade80",
 	"#60a5fa",
@@ -337,7 +337,7 @@ function fpStatusFor(row) {
 	(LOADED_FP_REFS[row.key] || [])
 		.filter((e) => e.name === row.name)
 		.forEach((e) =>
-			parts.push(e.quality == null ? "通用" : `${QUALITY_NAMES[e.quality]}阶`),
+			parts.push(e.quality == null ? "通用" : `${QUALITY_NAMES[e.quality]}`),
 		);
 	const fresh = state.entries.filter(
 		(e) => e.key === row.key && e.name === row.name,
@@ -735,7 +735,7 @@ function fpAggregateGroups(groups, jitter) {
 			label:
 				g.quality == null
 					? `${g.name}（通用）`
-					: `${g.name}（${QUALITY_NAMES[g.quality]}阶）`,
+					: `${g.name}（${QUALITY_NAMES[g.quality]}）`,
 			sig,
 			sigLegacy,
 			sigVar,
@@ -894,7 +894,7 @@ function openGroupExtract(key) {
 		}),
 	);
 	els.gxManualQuality.value = gx.red ? "4" : "3";
-	els.gxManualQuality.disabled = gx.red; // 红法宝组固定五阶
+	els.gxManualQuality.disabled = gx.red; // 红法宝组固定红品质
 	renderGxSamples();
 	gxRefreshSampleBtn();
 	gxOpen = true;
@@ -1194,7 +1194,7 @@ function renderGxSamples() {
 	groups.forEach((g) => {
 		const head = document.createElement("div");
 		head.className = "gx-grp-head";
-		head.textContent = `${g.name}（${QUALITY_NAMES[g.quality]}阶） ${g.samples.length} 样本`;
+		head.textContent = `${g.name}（${QUALITY_NAMES[g.quality]}） ${g.samples.length} 样本`;
 		els.gxCards.appendChild(head);
 		g.samples.forEach((s) => els.gxCards.appendChild(gxSampleCard(s)));
 	});
@@ -1230,7 +1230,7 @@ function gxSampleCard(s) {
 	div.appendChild(cv);
 	const src = document.createElement("div");
 	src.className = "gx-src";
-	src.textContent = `${s.file} · ${QUALITY_NAMES[s.quality]}阶`;
+	src.textContent = `${s.file} · ${QUALITY_NAMES[s.quality]}`;
 	div.appendChild(src);
 	const stateLine = document.createElement("div");
 	stateLine.textContent = s.excluded
@@ -1491,7 +1491,7 @@ els.gxCommit.addEventListener("click", () => {
 	const summary = finalT
 		.map(
 			(t) =>
-				`${t.name}（${t.quality == null ? "通用" : `${QUALITY_NAMES[t.quality]}阶`}，${t.samples} 样本）`,
+				`${t.name}（${t.quality == null ? "通用" : `${QUALITY_NAMES[t.quality]}`}，${t.samples} 样本）`,
 		)
 		.join("\n- ");
 	// 勾选了合并但未通过建议（仿真未通过 / 图标随品质变化）时醒目告警：
@@ -1536,7 +1536,7 @@ function openModal(target) {
 		els.modalTitle.textContent = `提取指纹：${state.target.name}`;
 		els.modalTarget.textContent =
 			`${state.target.type} | ${state.target.shapeKey || "未知形状"} | ` +
-			(state.target.red ? "红法宝（五阶）" : "普通");
+			(state.target.red ? "红法宝（红）" : "普通");
 	} else {
 		els.modalTitle.textContent = "手动提取指纹";
 		els.modalTarget.textContent = "未指定法宝，名称 / 类型 / 品质手工选择";
@@ -2250,8 +2250,8 @@ function updateForm() {
 			if (!state.hadSelection && !els.quality.disabled) els.quality.value = mq;
 			els.qualityGuess.textContent =
 				Number(els.quality.value) === mq
-					? `推荐：${QUALITY_NAMES[mq]}阶`
-					: `推荐：${QUALITY_NAMES[mq]}阶（未采用，可手动切换）`;
+					? `推荐：${QUALITY_NAMES[mq]}`
+					: `推荐：${QUALITY_NAMES[mq]}（未采用，可手动切换）`;
 		} else {
 			els.qualityGuess.textContent = "";
 		}
@@ -2404,7 +2404,7 @@ els.extract.addEventListener("click", () => {
 		state.target &&
 		red !== state.target.red &&
 		!confirm(
-			`目标「${state.target.name}」是${state.target.red ? "红法宝（五阶）" : "普通法宝"}，与所选品质不一致，仍要提取吗？`,
+			`目标「${state.target.name}」是${state.target.red ? "红法宝（红）" : "普通法宝"}，与所选品质不一致，仍要提取吗？`,
 		)
 	)
 		return;
@@ -2446,7 +2446,7 @@ els.extract.addEventListener("click", () => {
 	ws.renderCellGrid();
 	// renderCellGrid 内 updateForm 可能按唯一候选回填名称；目标模式下恢复锁定名
 	els.name.value = state.target ? state.target.name : "";
-	ws.setStatus(`已提取「${name}」（${QUALITY_NAMES[quality]}阶）`, "ok");
+	ws.setStatus(`已提取「${name}」（${QUALITY_NAMES[quality]}）`, "ok");
 });
 
 function saveEntries() {
@@ -2506,7 +2506,7 @@ function renderEntries() {
 		const meta = document.createElement("div");
 		meta.className = "meta";
 		const title = document.createElement("div");
-		title.textContent = `${idx + 1}. ${en.name}（${QUALITY_NAMES[en.quality]}阶）`;
+		title.textContent = `${idx + 1}. ${en.name}（${QUALITY_NAMES[en.quality]}）`;
 		meta.appendChild(title);
 		const sub = document.createElement("div");
 		sub.className = "sub";
@@ -2886,7 +2886,7 @@ function fpApplyFile(parsed, mtime, rawText) {
 		const names = conflicts
 			.map(
 				(c) =>
-					`${c.local.name}（${c.local.quality != null ? `${QUALITY_NAMES[c.local.quality]}阶` : "通用模板"}）`,
+					`${c.local.name}（${c.local.quality != null ? `${QUALITY_NAMES[c.local.quality]}` : "通用模板"}）`,
 			)
 			.join("、");
 		const keepLocal = confirm(
@@ -3359,7 +3359,7 @@ function appendReplayRow(fileName, p) {
 		fileName,
 		null, // 缩略图
 		`(${p.anchor[0]},${p.anchor[1]})`,
-		`${p.type || "?"} / ${p.shape} / ${QUALITY_NAMES[p.quality]}阶`,
+		`${p.type || "?"} / ${p.shape} / ${QUALITY_NAMES[p.quality]}`,
 		p.name || p.names.join("/") || "?",
 		hit ? hit.diff.toFixed(1) : "—",
 		second ? second.diff.toFixed(1) : "—",
@@ -5296,8 +5296,8 @@ function updateAnnForm() {
 			if (!ann.hadSelection) annEls.quality.value = mq + 1;
 			annEls.qualityGuess.textContent =
 				Number(annEls.quality.value) === mq + 1
-					? `推荐：${QUALITY_NAMES[mq]}阶`
-					: `推荐：${QUALITY_NAMES[mq]}阶（未采用，可手动切换）`;
+					? `推荐：${QUALITY_NAMES[mq]}`
+					: `推荐：${QUALITY_NAMES[mq]}（未采用，可手动切换）`;
 		} else {
 			annEls.qualityGuess.textContent = "";
 		}
@@ -5342,7 +5342,7 @@ function annTipFill(idx) {
 	const p = ann.pieces[idx];
 	const q = document.createElement("span");
 	q.style.color = QUALITY_TIP_COLORS[p.quality - 1] || "inherit";
-	q.textContent = `${QUALITY_NAMES[p.quality - 1]}阶`;
+	q.textContent = `${QUALITY_NAMES[p.quality - 1]}`;
 	annTip.replaceChildren(
 		document.createTextNode(`${p.name || "未命名"}（${p.type}）-`),
 		q,
@@ -5581,7 +5581,7 @@ function annExtract(piece) {
 	});
 	if (entry)
 		annStatus(
-			`已提取「${name}」（${QUALITY_NAMES[piece.quality - 1]}阶），见下方已提取条目`,
+			`已提取「${name}」（${QUALITY_NAMES[piece.quality - 1]}），见下方已提取条目`,
 			"ok",
 		);
 }
@@ -5601,7 +5601,7 @@ function renderAnnPieces() {
 		meta.className = "meta";
 		const title = document.createElement("div");
 		title.textContent =
-			`${idx + 1}. ${p.type} ${QUALITY_NAMES[p.quality - 1]}阶 ` +
+			`${idx + 1}. ${p.type} ${QUALITY_NAMES[p.quality - 1]} ` +
 			`锚点(${p.anchor[0]},${p.anchor[1]}) ${p.cells.length} 格` +
 			(p.name ? ` · ${p.name}` : "");
 		meta.appendChild(title);

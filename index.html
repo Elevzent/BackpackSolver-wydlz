@@ -212,6 +212,11 @@
 							<span class="switch-track"></span>
 							<span class="fill-first-text">填满优先</span>
 						</label>
+						<label class="cfg-field switch-field">
+							<input type="checkbox" class="adjacent-preview" />
+							<span class="switch-track"></span>
+							<span>相邻加成预估</span>
+						</label>
 						<span class="cfg-field">
 							<label for="worker-count">线程：</label>
 							<input
@@ -222,6 +227,9 @@
 								value="2" />
 						</span>
 					</div>
+					<span class="board-hint adjacent-preview-hint"
+						>开启后，实时布局会将标注的 1x1 相邻加成换算到周围同系法宝的对应属性（伤害加成为攻击力）。仅作局部预估展示，不计入总分或影响求解排序。</span
+					>
 					<span class="board-hint worker-max-hint"></span>
 					<span class="cfg-field time-limit-field">
 						<label for="calc-time-limit">耗时上限：</label>

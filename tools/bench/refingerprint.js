@@ -287,7 +287,7 @@ async function main() {
 		"// 匹配端（scanNamePiece）2026-08-05 起用 sig；sigLegacy 为每格 2×2 象限全像素均值，",
 		"// 仅供无 sig 的旧条目回退。maxDiff 为组级建议值（组内最小类间 diff 的一半，下限 5，",
 		"// 无可比项 25），同组条目同一值；匹配差值超过 maxDiff 时不猜名，低置信交人工选择。",
-		"// quality: 0~4 对应 一~五阶；图标跨品质一致的条目可改为 null 作为该组通用模板。",
+		"// quality: 0~4 对应 绿/蓝/紫/金/红；图标跨品质一致的条目可改为 null 作为该组通用模板。",
 	];
 	const lines = [...header, "var SCAN_FP_REFS = {"];
 	Object.entries(fpRefs).forEach(([key, list]) => {

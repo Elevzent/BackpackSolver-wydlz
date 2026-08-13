@@ -46,6 +46,7 @@ const els = {
 	modeHint: document.querySelector(".mode-hint"),
 	fillFirst: document.querySelector(".fill-first"),
 	fillFirstText: document.querySelector(".fill-first-text"),
+	adjacentPreview: document.querySelector(".adjacent-preview"),
 	workerCount: document.querySelector(".worker-count"),
 	workerMaxHint: document.querySelector(".worker-max-hint"),
 	timeLimit: document.querySelector(".calc-time-limit"),
@@ -65,13 +66,13 @@ const els = {
 	statsCells: document.querySelector(".stats-cells"),
 };
 
-// 品质：一阶(绿) -> 二阶(蓝) -> 三阶(紫) -> 四阶(金) -> 五阶(红)
+// 品质：绿 -> 蓝 -> 紫 -> 金 -> 红（内部索引保持 0~4）
 const QUALITY_COLORS = ["green", "blue", "purple", "gold", "red"];
-const QUALITY_NAMES = ["一", "二", "三", "四", "五"];
+const QUALITY_NAMES = ["绿", "蓝", "紫", "金", "红"];
 
 const utils = {
 	getQualityColor: (quality) => `c-${QUALITY_COLORS[quality]}`,
-	getQualityText: (quality) => `${QUALITY_NAMES[quality]}阶`,
+	getQualityText: (quality) => QUALITY_NAMES[quality],
 	shape2Html: (shape, quality) => {
 		const wrapper = document.createElement("div");
 		const box = document.createElement("div");
@@ -254,7 +255,7 @@ function blockTableInit(type) {
 	const df = document.createDocumentFragment();
 
 	// 构建一行法宝数据：values 统一为二维数组（按品质索引），红色法宝只有一档数据，fixed 为 true
-	const buildLine = (name, shape, values, bonus, fixed) => {
+	const buildLine = (name, shape, values, bonus, previewAdjacent, fixed) => {
 		const line = document.createElement("tr");
 		const cells = Array.from({ length: 7 }, () => {
 			const cell = document.createElement("td");
@@ -308,6 +309,7 @@ function blockTableInit(type) {
 				type,
 				shape,
 				bonus,
+				previewAdjacent,
 				values,
 				fixed,
 				quality,
@@ -320,13 +322,27 @@ function blockTableInit(type) {
 
 	Object.entries(blockObj.normal || {}).forEach(([name, detail]) => {
 		df.appendChild(
-			buildLine(name, detail.shape, detail.value, detail.bonus, false),
+			buildLine(
+				name,
+				detail.shape,
+				detail.value,
+				detail.bonus,
+				!!detail.previewAdjacent,
+				false,
+			),
 		);
 	});
 
 	Object.entries(blockObj.red || {}).forEach(([name, detail]) => {
 		df.appendChild(
-			buildLine(name, detail.shape, [detail.value], detail.bonus, true),
+			buildLine(
+				name,
+				detail.shape,
+				[detail.value],
+				detail.bonus,
+				!!detail.previewAdjacent,
+				true,
+			),
 		);
 	});
 
@@ -399,7 +415,7 @@ function renderSelectedBlocks() {
 		cells[3].appendChild(utils.formatAttr(getItemAttrs(item)));
 		cells[4].appendChild(utils.formatBonus(item.bonus, getItemAttrs(item)[3]));
 
-		// 品质：普通法宝可调整，红色法宝固定五阶
+		// 品质：普通法宝可调整，红色法宝固定红品质
 		cells[5].appendChild(
 			utils.formatQuality(item.quality, item.values, item.fixed, (qtt) => {
 				item.quality = qtt;
@@ -460,6 +476,7 @@ function updateSelStats() {
 const PRESET_INDEX_KEY = "fabao-presets:index";
 const PRESET_DATA_PREFIX = "fabao-presets:data:";
 const PRESET_MAX = 40;
+const RESULT_VERSION = 5; // 相邻加成移出求解评分，改为实时布局可选预估
 
 /** 历史最优：回溯 */
 // 当前已选列表下的历史最优结果（含日志与棋盘快照）：多次计算只保留最高分。
@@ -479,7 +496,8 @@ const currentWeights = () => {
 // 旧缓存没有 fillFirst 字段，按属性优先对待（旧结果本就是在属性优先下算的）
 const bestIsStale = () =>
 	!!memBest &&
-	(String(currentWeights()) !== String(memBest.weights) ||
+	(memBest.v !== RESULT_VERSION ||
+		String(currentWeights()) !== String(memBest.weights) ||
 		!!memBest.fillFirst !== els.fillFirst.checked);
 
 // 无历史最优或计算进行中时禁用（防止回溯内容被实时推送的新最优覆盖）
@@ -509,7 +527,7 @@ function captureBest() {
 	}));
 	const { ctx, ...result } = engine.best.result;
 	return {
-		v: 4, // 评分口径版本：4 = 归一化分（min(求和, 密度×7×6参考) 极值）；旧缓存口径不同，分数不可比
+		v: RESULT_VERSION, // 评分口径版本：相邻加成不计入求解评分；旧缓存口径不可比
 		score: engine.best.score,
 		weights: engine.snap.weights.slice(), // 判定多次计算的分数是否可比
 		fillFirst: !!engine.snap.fillFirst, // 判定目标模式（填满/属性优先）是否一致
@@ -648,7 +666,11 @@ function presetLoad() {
 		// 方案已入缓存：恢复其携带的历史最优，允许直接回溯
 		activePresetKey = key;
 		memBest =
-			!Array.isArray(raw) && raw && raw.best && raw.best.result
+			!Array.isArray(raw) &&
+			raw &&
+			raw.best &&
+			raw.best.result &&
+			raw.best.v === RESULT_VERSION
 				? raw.best
 				: null;
 		updateRecallBtn();
@@ -816,6 +838,7 @@ function setCalcRunning(running) {
 	els.applyBoardBtn.disabled = running;
 	els.modeSelect.disabled = running;
 	els.fillFirst.disabled = running;
+	els.adjacentPreview.disabled = running;
 	els.workerCount.disabled = running;
 	els.timeLimit.disabled = running;
 
@@ -838,7 +861,8 @@ function setCalcRunning(running) {
 //
 // 评分规则（与需求对齐）：
 //   相邻 = 两件法宝任意格子上下左右接触（对角不算，同件内部不算）
-//   最终属性 = 基础值 × (1 + 自身加成% × 相邻同五行件数 + 收到的相邻加成%之和)
+//   评分属性 = 基础值 × (1 + 自身加成% × 相邻同五行件数)
+//   标注为 previewAdjacent 的 1x1 相邻加成仅供实时布局悬浮提示预估，不进入评分。
 //   Min-Max 标准化 = 最终属性 ÷ 该属性理论极值（buildSnapshot 的 attrsMax：
 //     求和上界与密度×7×6 参考上界取较紧者，拍平攻/防/血量级差）
 //   总分 = Σ 已摆法宝 Σ属性 (标准化完成度 × 用户权重)，先标准化再加权，两层不合并；
@@ -887,9 +911,11 @@ function engPrepare(snap) {
 		const base = [it.attrs[0] || 0, it.attrs[1] || 0, it.attrs[2] || 0];
 		const pct = it.attrs[3] || 0;
 		const selfPct = [0, 0, 0];
-		const adjPct = [0, 0, 0];
+		const previewAdjPct = [0, 0, 0];
 		if (it.bonus[1] === 1) selfPct[it.bonus[0]] = pct / 100;
-		if (it.bonus[1] === 2) adjPct[it.bonus[0]] = pct / 100;
+		if (it.previewAdjacent && s.area === 1 && it.bonus[1] === 2) {
+			previewAdjPct[it.bonus[0]] = pct / 100;
+		}
 		return {
 			idx,
 			name: it.name,
@@ -907,18 +933,9 @@ function engPrepare(snap) {
 				base[1] * invMax[1] * weights[1] +
 				base[2] * invMax[2] * weights[2],
 			selfPct,
-			adjPct,
+			previewAdjPct,
 			max: it.max,
 		};
-	});
-
-	// 各五行的相邻加成比例总和（LNS 修复上界用）
-	const typeAdjSum = {};
-	items.forEach((p) => {
-		const s = typeAdjSum[p.ftype] || (typeAdjSum[p.ftype] = [0, 0, 0]);
-		s[0] += p.adjPct[0];
-		s[1] += p.adjPct[1];
-		s[2] += p.adjPct[2];
 	});
 
 	// 全部合法摆放（不考虑占用），byMin 按摆放的最小格子编号索引
@@ -951,7 +968,6 @@ function engPrepare(snap) {
 		byMin,
 		weights,
 		invMax,
-		typeAdjSum,
 		minArea: Math.min.apply(
 			null,
 			items.map((p) => p.area),
@@ -982,22 +998,18 @@ function engContrib(ctx, occ, insts, i) {
 	const p = ctx.items[insts[i].item];
 	const adj = engAdjIds(ctx, occ, insts[i].cells, i);
 	let same = 0;
-	const recv = [0, 0, 0];
 	adj.forEach((j) => {
 		const q = ctx.items[insts[j].item];
 		if (q.ftype !== p.ftype) return;
 		same++;
-		recv[0] += q.adjPct[0];
-		recv[1] += q.adjPct[1];
-		recv[2] += q.adjPct[2];
 	});
 	// 先算各属性原始最终值，再 Min-Max 标准化（× invMax 即 ÷ 理论极值），最后乘用户权重：
 	// 保持「先标准化（除法消除量纲）→ 再加权（表达设计意图）」两层结构，不合并成单层权重。
 	// 注意：这是退火最内层热函数（每次移动对每个受影响法宝调用），
 	// 必须零分配——用三个标量而不是数组，否则 GC 压力会拖垮迭代速度
-	const r0 = p.base[0] * (1 + p.selfPct[0] * same + recv[0]);
-	const r1 = p.base[1] * (1 + p.selfPct[1] * same + recv[1]);
-	const r2 = p.base[2] * (1 + p.selfPct[2] * same + recv[2]);
+	const r0 = p.base[0] * (1 + p.selfPct[0] * same);
+	const r1 = p.base[1] * (1 + p.selfPct[1] * same);
+	const r2 = p.base[2] * (1 + p.selfPct[2] * same);
 	return (
 		r0 * ctx.invMax[0] * ctx.weights[0] +
 		r1 * ctx.invMax[1] * ctx.weights[1] +
@@ -1026,23 +1038,37 @@ function engScoreLayout(snap, layout) {
 		const p = ctx.items[inst.item];
 		const adj = engAdjIds(ctx, occ, inst.cells, i);
 		let same = 0;
-		const recv = [0, 0, 0];
-		const recvDetail = [[], [], []];
+		const previewRecv = [0, 0, 0];
+		const previewRecvDetail = [[], [], []];
 		adj.forEach((j) => {
 			const q = ctx.items[insts[j].item];
 			if (q.ftype !== p.ftype) return;
 			same++;
 			for (let a = 0; a < 3; a++) {
-				if (q.adjPct[a] > 0) {
-					recv[a] += q.adjPct[a];
-					recvDetail[a].push({ name: q.name, pct: q.adjPct[a] * 100 });
+				if (q.previewAdjPct[a] > 0) {
+					previewRecv[a] += q.previewAdjPct[a];
+					previewRecvDetail[a].push({
+						name: q.name,
+						pct: q.previewAdjPct[a] * 100,
+					});
 				}
 			}
 		});
 		const finals = [0, 1, 2].map(
-			(j) => p.base[j] * (1 + p.selfPct[j] * same + recv[j]),
+			(j) => p.base[j] * (1 + p.selfPct[j] * same),
 		);
-		return { inst, p, same, recv, recvDetail, finals };
+		const previewFinals = finals.map(
+			(value, j) => value + p.base[j] * previewRecv[j],
+		);
+		return {
+			inst,
+			p,
+			same,
+			previewRecv,
+			previewRecvDetail,
+			finals,
+			previewFinals,
+		};
 	});
 
 	const totals = [0, 0, 0];
@@ -1121,6 +1147,105 @@ function engWorkerMain() {
 		snap.disabled.forEach((ci) => {
 			occ[ci] = -2;
 		});
+		// 退火每步只会重算移动件及其相邻件。复用这组临时缓冲，避免高频 Set / Array 分配。
+		const affMark = new Int32Array(n);
+		const affIds = new Int16Array(n);
+		const affValues = new Float64Array(n);
+		const neighborMark = new Int32Array(n);
+		let affStamp = 0;
+		let affCount = 0;
+		let neighborStamp = 0;
+		function beginAffected() {
+			affCount = 0;
+			if (++affStamp === 2147483647) {
+				affMark.fill(0);
+				affStamp = 1;
+			}
+		}
+		function addAffected(id) {
+			if (id < 0 || affMark[id] === affStamp) return;
+			affMark[id] = affStamp;
+			affIds[affCount++] = id;
+		}
+		function collectAffected(cells, self) {
+			for (let i = 0; i < cells.length; i++) {
+				const ci = cells[i];
+				const r = (ci / ctx.cols) | 0;
+				const c = ci % ctx.cols;
+				if (r > 0) addAffected(occ[ci - ctx.cols]);
+				if (r + 1 < ctx.rows) addAffected(occ[ci + ctx.cols]);
+				if (c > 0) addAffected(occ[ci - 1]);
+				if (c + 1 < ctx.cols) addAffected(occ[ci + 1]);
+			}
+			addAffected(self);
+		}
+		function oldAffectedSum() {
+			let sum = 0;
+			for (let i = 0; i < affCount; i++) sum += units[affIds[i]].contrib;
+			return sum;
+		}
+		function scoreAffected() {
+			let sum = 0;
+			for (let i = 0; i < affCount; i++) {
+				const value = fastContrib(affIds[i]);
+				affValues[i] = value;
+				sum += value;
+			}
+			return sum;
+		}
+		function applyAffected() {
+			for (let i = 0; i < affCount; i++) units[affIds[i]].contrib = affValues[i];
+		}
+		function fastContrib(id) {
+			const p = ctx.items[units[id].item];
+			if (++neighborStamp === 2147483647) {
+				neighborMark.fill(0);
+				neighborStamp = 1;
+			}
+			let same = 0;
+			const cells = units[id].cells;
+			for (let i = 0; i < cells.length; i++) {
+				const ci = cells[i];
+				const r = (ci / ctx.cols) | 0;
+				const c = ci % ctx.cols;
+				if (r > 0) {
+					const j = occ[ci - ctx.cols];
+					if (j >= 0 && j !== id && neighborMark[j] !== neighborStamp) {
+						neighborMark[j] = neighborStamp;
+						if (ctx.items[units[j].item].ftype === p.ftype) same++;
+					}
+				}
+				if (r + 1 < ctx.rows) {
+					const j = occ[ci + ctx.cols];
+					if (j >= 0 && j !== id && neighborMark[j] !== neighborStamp) {
+						neighborMark[j] = neighborStamp;
+						if (ctx.items[units[j].item].ftype === p.ftype) same++;
+					}
+				}
+				if (c > 0) {
+					const j = occ[ci - 1];
+					if (j >= 0 && j !== id && neighborMark[j] !== neighborStamp) {
+						neighborMark[j] = neighborStamp;
+						if (ctx.items[units[j].item].ftype === p.ftype) same++;
+					}
+				}
+				if (c + 1 < ctx.cols) {
+					const j = occ[ci + 1];
+					if (j >= 0 && j !== id && neighborMark[j] !== neighborStamp) {
+						neighborMark[j] = neighborStamp;
+						if (ctx.items[units[j].item].ftype === p.ftype) same++;
+					}
+				}
+			}
+			const r0 = p.base[0] * (1 + p.selfPct[0] * same);
+			const r1 = p.base[1] * (1 + p.selfPct[1] * same);
+			const r2 = p.base[2] * (1 + p.selfPct[2] * same);
+			return (
+				r0 * ctx.invMax[0] * ctx.weights[0] +
+				r1 * ctx.invMax[1] * ctx.weights[1] +
+				r2 * ctx.invMax[2] * ctx.weights[2]
+			);
+		}
 		let score = 0;
 		let iter = 0;
 		let bestScore = 0;
@@ -1133,7 +1258,7 @@ function engWorkerMain() {
 		const repairFailCache = new Set(); // 无改进的摧毁组合缓存（键含 bestScore，best 一变自动失效）
 
 		// 混合模式：LNS（周期性摧毁 + 小规模精确修复）
-		// 每 LNS_PERIOD 毫秒从历史最优布局摧毁 k 件，保留件固定（参与相邻加成），
+		// 每 LNS_PERIOD 毫秒从历史最优布局摧毁 k 件，保留件固定（参与自身加成），
 		// 被毁件在空格内做带剪枝的精确修复搜索；预算 LNS_REPAIR_MS / LNS_REPAIR_NODES，
 		// anytime：超时保留已找到的更优解。修复解采纳为退火新起点。
 		// 修复搜索内部：DFS 只分支多格件（min-cell 顺序强制，同种副本无排列重复），
@@ -1142,13 +1267,12 @@ function engWorkerMain() {
 		const LNS_PERIOD = 3000;
 		const LNS_REPAIR_MS = 300;
 		const LNS_REPAIR_NODES = 300000;
-		// 每件法宝的贡献上界：基础 × (1 + (自身加成 + 同五行相邻加成总和) × 周长)，
+		// 每件法宝的贡献上界：基础 × (1 + 自身加成 × 周长)，
 		// 再按「先标准化 → 再加权」折算（两种模式的 fillW 都由此推导，因此都算）
 		const maxC = items.map((p) => {
-			const tas = ctx.typeAdjSum[p.ftype];
 			let s = 0;
 			for (let j = 0; j < 3; j++) {
-				const raw = p.base[j] * (1 + (p.selfPct[j] + tas[j]) * p.per);
+				const raw = p.base[j] * (1 + p.selfPct[j] * p.per);
 				s += raw * ctx.invMax[j] * ctx.weights[j];
 			}
 			return s;
@@ -1192,81 +1316,54 @@ function engWorkerMain() {
 			for (let i = 0; i < cells.length; i++) {
 				if (occ[cells[i]] !== -1) return null;
 			}
-			const aff = engAdjIds(ctx, occ, cells, ui);
-			aff.add(ui);
-			let oldSum = 0;
-			aff.forEach((a) => {
-				oldSum += units[a].contrib;
-			});
-			cells.forEach((ci) => {
-				occ[ci] = ui;
-			});
+			beginAffected();
+			collectAffected(cells, ui);
+			const oldSum = oldAffectedSum();
+			for (let i = 0; i < cells.length; i++) occ[cells[i]] = ui;
 			u.cells = cells;
 			u.pr = pr;
-			let newSum = 0;
-			const newC = [];
-			aff.forEach((a) => {
-				const c = engContrib(ctx, occ, units, a);
-				newC.push([a, c]);
-				newSum += c;
-			});
 			return {
-				delta: newSum - oldSum + cells.length * fillW,
+				delta: scoreAffected() - oldSum + cells.length * fillW,
 				cells,
-				newC,
 			};
 		}
 		function applyPlace(u, res) {
-			res.newC.forEach(([a, c]) => {
-				units[a].contrib = c;
-			});
+			applyAffected();
 			score += res.delta;
 		}
 		function undoPlace(u, res) {
-			res.cells.forEach((ci) => {
-				occ[ci] = -1;
-			});
+			for (let i = 0; i < res.cells.length; i++) occ[res.cells[i]] = -1;
 			u.cells = null;
 			u.pr = null;
 		}
 		function tryRemove(u, ui) {
-			const aff = engAdjIds(ctx, occ, u.cells, ui);
-			aff.add(ui);
-			let oldSum = 0;
-			aff.forEach((a) => {
-				oldSum += units[a].contrib;
-			});
+			beginAffected();
+			collectAffected(u.cells, ui);
+			const oldSum = oldAffectedSum();
 			const cells = u.cells;
 			const pr = u.pr;
-			cells.forEach((ci) => {
-				occ[ci] = -1;
-			});
+			for (let i = 0; i < cells.length; i++) occ[cells[i]] = -1;
 			u.cells = null;
 			u.pr = null;
 			let newSum = 0;
-			const newC = [];
-			aff.forEach((a) => {
-				const c = a === ui ? 0 : engContrib(ctx, occ, units, a);
-				newC.push([a, c]);
-				newSum += c;
-			});
+			for (let i = 0; i < affCount; i++) {
+				const id = affIds[i];
+				const value = id === ui ? 0 : fastContrib(id);
+				affValues[i] = value;
+				newSum += value;
+			}
 			return {
 				delta: newSum - oldSum - cells.length * fillW,
 				cells,
 				pr,
-				newC,
 			};
 		}
 		function applyRemove(res) {
-			res.newC.forEach(([a, c]) => {
-				units[a].contrib = c;
-			});
+			applyAffected();
 			score += res.delta;
 		}
 		function undoRemove(u, ui, res) {
-			res.cells.forEach((ci) => {
-				occ[ci] = ui;
-			});
+			for (let i = 0; i < res.cells.length; i++) occ[res.cells[i]] = ui;
 			u.cells = res.cells;
 			u.pr = res.pr;
 		}
@@ -1277,49 +1374,28 @@ function engWorkerMain() {
 				const ci = pr.cells[i];
 				if (occ[ci] !== -1 && occ[ci] !== ui) return null;
 			}
-			const aff = engAdjIds(ctx, occ, oldCells, ui);
-			oldCells.forEach((ci) => {
-				occ[ci] = -1;
-			});
-			engAdjIds(ctx, occ, pr.cells, ui).forEach((a) => aff.add(a));
-			aff.add(ui);
-			let oldSum = 0;
-			aff.forEach((a) => {
-				oldSum += units[a].contrib;
-			});
-			pr.cells.forEach((ci) => {
-				occ[ci] = ui;
-			});
+			beginAffected();
+			collectAffected(oldCells, ui);
+			for (let i = 0; i < oldCells.length; i++) occ[oldCells[i]] = -1;
+			collectAffected(pr.cells, ui);
+			const oldSum = oldAffectedSum();
+			for (let i = 0; i < pr.cells.length; i++) occ[pr.cells[i]] = ui;
 			u.cells = pr.cells;
 			u.pr = pr;
-			let newSum = 0;
-			const newC = [];
-			aff.forEach((a) => {
-				const c = engContrib(ctx, occ, units, a);
-				newC.push([a, c]);
-				newSum += c;
-			});
 			return {
-				delta: newSum - oldSum,
+				delta: scoreAffected() - oldSum,
 				oldCells,
 				newCells: pr.cells,
 				prOld,
-				newC,
 			};
 		}
 		function applyMove(res) {
-			res.newC.forEach(([a, c]) => {
-				units[a].contrib = c;
-			});
+			applyAffected();
 			score += res.delta;
 		}
 		function undoMove(u, ui, res) {
-			res.newCells.forEach((ci) => {
-				occ[ci] = -1;
-			});
-			res.oldCells.forEach((ci) => {
-				occ[ci] = ui;
-			});
+			for (let i = 0; i < res.newCells.length; i++) occ[res.newCells[i]] = -1;
+			for (let i = 0; i < res.oldCells.length; i++) occ[res.oldCells[i]] = ui;
 			u.cells = res.oldCells;
 			u.pr = res.prOld;
 		}
@@ -1702,15 +1778,17 @@ function engWorkerMain() {
 					});
 				}
 			}
-			const cacheKey =
-				bestScore.toFixed(6) +
-				"|" +
-				[...removed].sort((a, b) => a - b).join(",");
+			// 同分替代布局可以被采纳；缓存键必须包含布局本身，不能只用总分。
+			const layoutKey = bestLayout
+				.map((pl) => `${pl.item}@${pl.r},${pl.c}`)
+				.sort()
+				.join(";");
+			const cacheKey = `${layoutKey}|${[...removed].sort((a, b) => a - b).join(",")}`;
 			if (repairFailCache.has(cacheKey)) return;
 			lnsAttempts++;
 			const res = lnsRepair(removed);
 			if (!res || !res.improved) {
-				// 失败缓存：同一 best（同分即同布局）下同一摧毁组合无改进，
+				// 失败缓存：同一布局下同一摧毁组合无改进，
 				// 短期内重跑结果相同，跳过；FIFO 封顶，旧失败最终会被重试
 				if (repairFailCache.size >= 500)
 					repairFailCache.delete(repairFailCache.keys().next().value);
@@ -1952,35 +2030,31 @@ function buildSnapshot() {
 		const [r, c] = key.split(",").map(Number);
 		return r * cols + c;
 	});
-	const bonusMax = [0, 0, 0];
 	const items = selectedBlocks.map((it) => {
 		const attrs = getItemAttrs(it);
-
-		if (it.bonus[1] === 2) {
-			bonusMax[it.bonus[0]] = Math.max(bonusMax[it.bonus[0]], attrs[3]);
-		}
 
 		return {
 			name: it.name,
 			type: it.type,
 			quality: it.quality,
 			bonus: it.bonus,
+			previewAdjacent: !!it.previewAdjacent,
 			attrs: attrs,
 			shape: it.shape,
 			max: it.nums,
 		};
 	});
 	// 各属性理论极值（Min-Max 标准化的分母，仅用于拍平不同属性间的量级差）。
-	// 单件乐观上界：相邻同五行件数 ≤ 形状周边空格数 gridCount，故自身加成与邻接加成都最多吃
-	// gridCount 次：base × (1 + (自身加成 + 邻接加成上限) × gridCount / 100)
+	// 单件乐观上界：相邻同五行件数 ≤ 形状周边空格数 gridCount，故自身加成最多吃
+	// gridCount 次：base × (1 + 自身加成 × gridCount / 100)
 	const sumMax = [0, 0, 0]; // 求和上界：候选池（含数量）全部摆出的各属性总值
 	const densMax = [0, 0, 0]; // 密度上界：各属性单格密度上限
 	selectedBlocks.forEach((it) => {
 		const attrs = getItemAttrs(it);
-		const bounsSelf = [0, 0, 0];
+		const bonusSelf = [0, 0, 0];
 
 		if (it.bonus[1] === 1) {
-			bounsSelf[it.bonus[0]] = attrs[3];
+			bonusSelf[it.bonus[0]] = attrs[3];
 		}
 
 		const gridCount = countAdjacentCells(it.shape);
@@ -1990,8 +2064,7 @@ function buildSnapshot() {
 		);
 
 		for (let j = 0; j < 3; j++) {
-			const val =
-				attrs[j] * (1 + (gridCount * (bounsSelf[j] + bonusMax[j])) / 100);
+			const val = attrs[j] * (1 + (gridCount * bonusSelf[j]) / 100);
 			sumMax[j] += val * it.nums;
 			densMax[j] = Math.max(densMax[j], val / area);
 		}
@@ -2114,22 +2187,29 @@ function showCellTip(cell) {
 	const labels = ["攻击", "防御", "血量"];
 	const fmt3 = (arr) => arr.map((v, j) => `${labels[j]}${fmtNum(v)}`).join("/");
 	const bonusParts = [];
+	const previewRecvDetail = d.previewRecvDetail || [[], [], []];
+	const previewFinals = d.previewFinals || d.finals;
 	for (let j = 0; j < 3; j++) {
 		if (p.selfPct[j] > 0 && d.same > 0) {
 			bonusParts.push(
 				`自身${labels[j]}+${Math.round(p.selfPct[j] * 100 * d.same)}%`,
 			);
 		}
-		const adjPct = d.recvDetail[j].reduce((s, rd) => s + rd.pct, 0);
-		if (adjPct > 0) {
-			bonusParts.push(`邻接${labels[j]}+${Math.round(adjPct)}%`);
+		if (els.adjacentPreview.checked) {
+			const previewPct = previewRecvDetail[j].reduce(
+				(s, rd) => s + rd.pct,
+				0,
+			);
+			if (previewPct > 0) {
+				bonusParts.push(`相邻预估${labels[j]}+${Math.round(previewPct)}%`);
+			}
 		}
 	}
 	cellTip.textContent = [
 		`${p.name}（${p.ftype}·${utils.getQualityText(p.quality)}）`,
 		`基础: ${fmt3(p.base)}`,
 		`加成: ${bonusParts.length ? bonusParts.join("，") : "无"}`,
-		`最终: ${fmt3(d.finals)}`,
+		`${els.adjacentPreview.checked ? "布局预估" : "最终"}: ${fmt3(els.adjacentPreview.checked ? previewFinals : d.finals)}`,
 	].join("\n");
 	// 先显示再测量：优先放格子上方，空间不足放下方，横向不超出视口
 	cellTip.hidden = false;
@@ -2277,7 +2357,7 @@ function stopCalc(reason, statusText) {
 		// 同一问题（权重与目标模式一致）下属性分打平时，按占格数裁决：填得更满的结果更优
 		const sameProblem =
 			!!memBest &&
-			memBest.v === 4 &&
+			memBest.v === RESULT_VERSION &&
 			String(engine.snap.weights) === String(memBest.weights) &&
 			!!memBest.fillFirst === !!engine.snap.fillFirst;
 		const oldFilled = sameProblem
@@ -2546,7 +2626,7 @@ function scanGridDims() {
 	};
 }
 
-/** 法宝目录下拉选项：名称 -> 是否红色法宝（品质固定五阶） */
+/** 法宝目录下拉选项：名称 -> 是否红色法宝（品质固定红品质） */
 const SCAN_BLOCK_NAMES = (() => {
 	const map = new Map();
 	Object.values(BLOCKS).forEach((blockObj) => {
@@ -2596,7 +2676,7 @@ const SCAN_BLOCK_DETAILS = (() => {
 	return map;
 })();
 
-// 名称候选推导：按 类型 + 品质（五阶=红法宝组）+ 形状（识别出行带 shapeMat 时）筛选法宝目录；
+// 名称候选推导：按 类型 + 品质（红品质=红法宝组）+ 形状（识别出行带 shapeMat 时）筛选法宝目录；
 // 类型未选遍历全类型，形状未知只按类型 + 品质过滤；结果表名称下拉与选格补录的名称推荐共用
 function scanNameCandidates(item) {
 	const shapeJson = item.pieces?.length
@@ -2759,7 +2839,7 @@ function scanRenderItems() {
 			tdType.appendChild(tSel);
 			tr.appendChild(tdType);
 
-			// 名称：可搜索下拉，输入过滤法宝目录；红色法宝品质固定五阶
+			// 名称：可搜索下拉，输入过滤法宝目录；红色法宝品质固定红品质
 			const tdName = document.createElement("td");
 			const combo = document.createElement("div");
 			combo.className = "scan-name-combo";
@@ -2776,8 +2856,8 @@ function scanRenderItems() {
 			tdName.appendChild(combo);
 			tr.appendChild(tdName);
 
-			// 品质：复用品质色样式；普通法宝按 values 档位数裁剪选项（无五阶），
-			// 红色法宝品质固定五阶，与已选列表一致显示为彩色文本而非禁用下拉
+			// 品质：复用品质色样式；普通法宝按 values 档位数裁剪选项（无红品质），
+			// 红色法宝品质固定红品质，与已选列表一致显示为彩色文本而非禁用下拉
 			const tdQuality = document.createElement("td");
 			tdQuality.dataset.label = "品质"; // 移动端卡片字段名
 			const qSel = document.createElement("select");
@@ -2785,8 +2865,8 @@ function scanRenderItems() {
 			const syncQuality = () => {
 				const detail = SCAN_BLOCK_DETAILS.get(item.name);
 				const fixed = detail?.fixed === true;
-				// 品质档位数跟随名称：普通法宝只有 values.length 档（无五阶），
-				// 红色法宝固定五阶；名称未知时保留全部档位
+				// 品质档位数跟随名称：普通法宝只有 values.length 档（无红品质），
+				// 红色法宝固定红品质；名称未知时保留全部档位
 				const maxQ = fixed
 					? 4
 					: detail
@@ -2893,7 +2973,7 @@ function scanRenderItems() {
 			tr.appendChild(tdDel);
 
 			// 名称搜索下拉：focus / 输入时按 类型 + 品质 + 形状 过滤候选，点选或失焦时提交，
-			// 名称变化联动品质（红色法宝固定五阶）与类型（选中名称即确定类型）
+			// 名称变化联动品质（红色法宝固定红品质）与类型（选中名称即确定类型）
 			const commitName = (name) => {
 				item.name = name;
 				nameIn.value = name;
@@ -3941,7 +4021,7 @@ function scanInit() {
 		clearSelectedBlocks();
 		let imported = 0;
 		valid.forEach(({ item, detail }) => {
-			// 品质 clamp 兜底：普通法宝 values 只有 4 档，红色法宝固定五阶
+			// 品质 clamp 兜底：普通法宝 values 只有 4 档，红色法宝固定红品质
 			const quality = detail.fixed
 				? 4
 				: Math.min(item.quality, detail.values.length - 1);
