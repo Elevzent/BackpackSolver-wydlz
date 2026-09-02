@@ -27,14 +27,6 @@
 - Run `node tools/test-adjacent-bonus.js` after changing adjacent-bonus scoring.
 - Verify user-visible changes by opening `index.html` in a browser.
 
-## Production Deployment
-
-- The public instance of this project is served at `http://wydlz.duckdns.org/BackpackSolver-wydlz/`; see `../docs/server-runbook.md` before changing it.
-- Release changes to the gray instance at `http://wydlz.duckdns.org/BackpackSolver-wydlz-gray/` and `/srv/BackpackSolver-wydlz-gray` first. Do not update `/srv/BackpackSolver-wydlz` unless the user explicitly approves promotion.
-- Treat `/srv/BackpackSolver-wydlz` on the server as an independently verified production copy. Compare files before deployment; do not overwrite it merely because the local working tree has changes.
-- Static `css`, `js`, and `json` assets are cached. When changing a referenced generated data file, update its version query in `index.html` so browsers fetch the release immediately.
-- The deployment CSP must retain the OpenCV allowances listed in Data Boundaries.
-
 ## Provenance and License
 
 - This is a derivative of `gbcdby/knapsack-solver`; keep the original author attribution, upstream link, and Apache License 2.0 notices in README and LICENSE.
