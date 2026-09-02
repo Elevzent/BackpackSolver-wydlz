@@ -228,7 +228,7 @@
 						</span>
 					</div>
 					<span class="board-hint adjacent-preview-hint"
-						>开启后，标注的 1x1 相邻加成会按相邻同系法宝的基础属性折算（伤害加成为攻击力），并计入总属性、排序和求解评分。多个加成可叠加；同一件法宝多边接触只计算一次。</span
+						>开启后，标注的 1x1 与带相邻加成的多格法宝会按相邻同系法宝的基础属性折算（伤害加成为攻击力），并计入总属性、排序和求解评分。多个加成可叠加；同一件法宝多边接触只计算一次。</span
 					>
 					<span class="board-hint worker-max-hint"></span>
 					<span class="cfg-field time-limit-field">
@@ -374,7 +374,7 @@
 		<script src="./data/shapes.data.js"></script>
 		<!-- 不同属性的全部方块集合：每个法宝按品质 normal -> [绿、蓝、紫、金] 二维数组，red -> 一维数组 -->
 		<!-- 法宝项属性值: [atk, def, hp, 加成比例]；加成 [加成类型 (0 atk、1 def、2 hp), 作用域 (0 无、1 自身、2 相邻)]，不填则无加成 -->
-		<script src="./data/blocks.data.js"></script>
+		<script src="./data/blocks.data.js?v=20260901-adjacent-v1"></script>
 		<!-- 截图识别配置（元素圆点色值 SCAN_DOT_TYPES）与法宝图标指纹（SCAN_FP_REFS，同 类型+形状+红/普通 多法宝时由样例校准） -->
 		<!-- 键 `类型|形状|red|normal`；sig 为每格 4×4 块图标像素均值（不足记 null，供精细匹配），sigLegacy 为每格 2×2 块全像素均值 RGB，与 scanPieceFp 输出一致，当前匹配用 sigLegacy -->
 		<!-- 匹配差值超过 maxDiff 时不猜名，低置信交人工选择 -->

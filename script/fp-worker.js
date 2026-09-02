@@ -43,9 +43,14 @@ const cvReady = Promise.resolve(self.cv)
 		});
 	});
 
-/** File 解码 1:1 取像素（OffscreenCanvas，等价浏览器端 scanImagePixels） */
+/** File 解码 1:1 取像素（OffscreenCanvas，等价浏览器端 scanImagePixels）。
+ *  colorSpaceConversion:"none" 禁用 ICC 色彩管理（2026-08-11）：Display P3 截图
+ *  默认会被浏览器转成 sRGB，饱和色 hue 系统性偏移（实测 P3 JPEG 的水11 品质票
+ *  红→金翻转、锚点丢失，错拆 8 件）；node bench（pngjs/sips）一直吃原值，
+ *  全部阈值/模型都校准在原值口径上，浏览器必须对齐。不支持的浏览器忽略该
+ *  选项，退回旧行为（无回归） */
 async function fpwDecode(file) {
-	const bmp = await createImageBitmap(file);
+	const bmp = await createImageBitmap(file, { colorSpaceConversion: "none" });
 	try {
 		const cvs = new OffscreenCanvas(bmp.width, bmp.height);
 		const ctx = cvs.getContext("2d", { willReadFrequently: true });

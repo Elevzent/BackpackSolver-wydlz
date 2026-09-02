@@ -980,7 +980,7 @@ async function gxRunBatch() {
 			continue;
 		}
 		const { rows, cols } = truth;
-		const img = await createImageBitmap(f);
+		const img = await createImageBitmap(f, { colorSpaceConversion: "none" }); // 原值解码，对齐 node bench 校准口径（见 fp-worker.js fpwDecode）
 		// 检测图：1:1 取像素后走共享双线性重采样（与回放验证 / node bench 逐字节一致）
 		const { imgData, scale } = scanMakeDetectImage(img, DETECT_WIDTH);
 		const rect = scanDetectBoard(cv, imgData, cols, rows);
@@ -1732,7 +1732,7 @@ function createBoardWorkspace(els, hooks) {
 	async function loadImageBlob(blob, fileName) {
 		if (!blob || !blob.type.startsWith("image/")) return;
 		stopEditing();
-		ws.img = await createImageBitmap(blob);
+		ws.img = await createImageBitmap(blob, { colorSpaceConversion: "none" }); // 原值解码，对齐 node bench 校准口径（回放识别用）
 		ws.rect = null;
 		ws.cells = null;
 		ws.selected.clear();
@@ -3439,7 +3439,7 @@ async function replayFiles(files) {
 		const truth = bt.truths.get(f.name) || null;
 		const rows = truth ? truth.rows : Number(els.replayRows.value) || 1;
 		const cols = truth ? truth.cols : Number(els.replayCols.value) || 1;
-		const img = await createImageBitmap(f);
+		const img = await createImageBitmap(f, { colorSpaceConversion: "none" }); // 原值解码，对齐 node bench 校准口径
 		// 检测图：1:1 取像素后走共享双线性重采样（与 node bench 逐字节一致）
 		const { imgData, scale } = scanMakeDetectImage(img, DETECT_WIDTH);
 		const rect = scanDetectBoard(cv, imgData, cols, rows);
@@ -3920,6 +3920,7 @@ const DOT_TYPE_COLORS = {
 	火: "#e03c31",
 	土: "#b87514",
 	雷: "#8b5cf6",
+	邪: "#c2185b",
 	体: "#6b7280",
 };
 const dotColor = (t) => DOT_TYPE_COLORS[t] || "#9aa0a6";
@@ -4078,7 +4079,7 @@ async function dcPushItem(f, truth, full, img) {
 	const item = {
 		f,
 		name: f.name,
-		img: img || (await createImageBitmap(f)),
+		img: img || (await createImageBitmap(f, { colorSpaceConversion: "none" })), // 原值解码，对齐 node bench 校准口径
 		truth: JSON.parse(JSON.stringify(truth)), // 调整只作用内存副本
 		full,
 		discarded: false,
@@ -4174,7 +4175,7 @@ async function dcLocateSerial() {
 			continue;
 		}
 		try {
-			const img = await createImageBitmap(f);
+			const img = await createImageBitmap(f, { colorSpaceConversion: "none" }); // 原值解码，对齐 node bench 校准口径
 			const { imgData, scale } = scanMakeDetectImage(img, DETECT_WIDTH);
 			const rect = scanDetectBoard(cv, imgData, truth.cols, truth.rows);
 			if (!rect) {
