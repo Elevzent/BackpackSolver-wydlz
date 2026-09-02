@@ -44,6 +44,14 @@ main {
 	margin: 0 auto;
 }
 
+.page-version {
+	max-width: 1400px;
+	margin: 1.25em auto 0;
+	color: var(--muted);
+	font-size: 0.75em;
+	text-align: right;
+}
+
 /* 第一屏两个面板等宽对半分，第二屏三个面板等宽 */
 .left-panel,
 .selected-block {
