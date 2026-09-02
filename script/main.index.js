@@ -320,28 +320,41 @@ function blockTableInit(type) {
 		return line;
 	};
 
-	Object.entries(blockObj.normal || {}).forEach(([name, detail]) => {
-		df.appendChild(
-			buildLine(
-				name,
-				detail.shape,
-				detail.value,
-				detail.bonus,
-				!!detail.previewAdjacent,
-				false,
-			),
-		);
+	const blocks = [
+		...Object.entries(blockObj.normal || {}).map(([name, detail]) => ({
+			name,
+			detail,
+			fixed: false,
+		})),
+		...Object.entries(blockObj.red || {}).map(([name, detail]) => ({
+			name,
+			detail,
+			fixed: true,
+		})),
+	].sort((a, b) => {
+		const areaA = a.detail.shape.flat().filter(Boolean).length;
+		const areaB = b.detail.shape.flat().filter(Boolean).length;
+		if (areaA !== areaB) return areaA - areaB;
+
+		// 同占用格数时按完整形状矩阵分组，避免相同形状被其他形状打散。
+		const shapeA = `${a.detail.shape.length}:${a.detail.shape
+			.map((row) => row.join(""))
+			.join("/")}`;
+		const shapeB = `${b.detail.shape.length}:${b.detail.shape
+			.map((row) => row.join(""))
+			.join("/")}`;
+		return shapeA.localeCompare(shapeB);
 	});
 
-	Object.entries(blockObj.red || {}).forEach(([name, detail]) => {
+	blocks.forEach(({ name, detail, fixed }) => {
 		df.appendChild(
 			buildLine(
 				name,
 				detail.shape,
-				[detail.value],
+				fixed ? [detail.value] : detail.value,
 				detail.bonus,
 				!!detail.previewAdjacent,
-				true,
+				fixed,
 			),
 		);
 	});
@@ -476,7 +489,7 @@ function updateSelStats() {
 const PRESET_INDEX_KEY = "fabao-presets:index";
 const PRESET_DATA_PREFIX = "fabao-presets:data:";
 const PRESET_MAX = 40;
-const RESULT_VERSION = 6; // 相邻加成开关会改变总分、排序和 Worker 求解评分
+const RESULT_VERSION = 7; // 相邻加成规则或法宝数值变化后递增，旧历史最优不可比较
 
 /** 历史最优：回溯 */
 // 当前已选列表下的历史最优结果（含日志与棋盘快照）：多次计算只保留最高分。
@@ -642,6 +655,39 @@ function presetSave() {
 	}
 }
 
+function hydratePresetBlocks(data) {
+	return data.map((item) => {
+		if (
+			!item ||
+			typeof item.name !== "string" ||
+			typeof item.type !== "string" ||
+			typeof item.nums !== "number"
+		) {
+			throw new Error("bad item");
+		}
+		const typeBlocks = BLOCKS[item.type];
+		const normal = typeBlocks && typeBlocks.normal[item.name];
+		const red = typeBlocks && typeBlocks.red[item.name];
+		const detail = normal || red;
+		if (!detail) throw new Error("missing catalog item");
+
+		const fixed = !!red;
+		return {
+			name: item.name,
+			type: item.type,
+			shape: detail.shape,
+			bonus: detail.bonus,
+			previewAdjacent: !!detail.previewAdjacent,
+			values: fixed ? [detail.value] : detail.value,
+			fixed,
+			quality: fixed
+				? 4
+				: Math.min(3, Math.max(0, Number.isInteger(item.quality) ? item.quality : 3)),
+			nums: Math.max(1, Math.floor(item.nums)),
+		};
+	});
+}
+
 function presetLoad() {
 	const key = els.presetSelect.value;
 	if (!key) return;
@@ -652,18 +698,9 @@ function presetLoad() {
 		// 兼容旧格式（纯数组，无历史最优）与新格式（{ blocks, best }）
 		const data = Array.isArray(raw) ? raw : raw && raw.blocks;
 		if (!Array.isArray(data)) throw new Error("bad data");
-		data.forEach((it) => {
-			if (
-				!it ||
-				typeof it.name !== "string" ||
-				!Array.isArray(it.shape) ||
-				typeof it.nums !== "number"
-			) {
-				throw new Error("bad item");
-			}
-		});
+		const hydrated = hydratePresetBlocks(data);
 		selectedBlocks.length = 0;
-		data.forEach((it) => selectedBlocks.push(it));
+		hydrated.forEach((it) => selectedBlocks.push(it));
 		renderSelectedBlocks();
 		// 方案已入缓存：恢复其携带的历史最优，允许直接回溯
 		activePresetKey = key;
@@ -677,7 +714,7 @@ function presetLoad() {
 				: null;
 		updateRecallBtn();
 		logLine(
-			`已载入方案，共 ${data.length} 项${memBest ? "，可回溯历史最优" : ""}`,
+			`已载入方案，共 ${hydrated.length} 项${memBest ? "，可回溯历史最优" : ""}`,
 			"log-sys",
 		);
 	} catch {
@@ -919,7 +956,10 @@ function engPrepare(snap) {
 				? snap.adjacentPctBound[it.type] || [0, 0, 0]
 				: [0, 0, 0];
 		if (it.bonus[1] === 1) selfPct[it.bonus[0]] = pct / 100;
-		if (it.previewAdjacent && s.area === 1 && it.bonus[1] === 2) {
+		if (
+			it.bonus[1] === 2 &&
+			(it.previewAdjacent || s.area > 1)
+		) {
 			adjacentPct[it.bonus[0]] = pct / 100;
 		}
 		return {
@@ -2107,7 +2147,12 @@ function buildSnapshot() {
 				(s, row) => s + row.filter((v) => v).length,
 				0,
 			);
-			if (!it.previewAdjacent || area !== 1 || it.bonus[1] !== 2) return;
+			if (
+				it.bonus[1] !== 2 ||
+				(area === 1 && !it.previewAdjacent)
+			) {
+				return;
+			}
 			if (!adjacentPctBound[it.type]) adjacentPctBound[it.type] = [0, 0, 0];
 			adjacentPctBound[it.type][it.bonus[0]] += (attrs[3] || 0) * it.nums / 100;
 		});
@@ -3765,7 +3810,7 @@ function scanSetImage(bitmap) {
 
 function scanLoadFile(file) {
 	if (!file || !file.type.startsWith("image/")) return;
-	createImageBitmap(file).then(scanSetImage, () => {
+	createImageBitmap(file, { colorSpaceConversion: "none" }).then(scanSetImage, () => {
 		scanStatus("图片读取失败", "err");
 	});
 }

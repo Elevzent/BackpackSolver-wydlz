@@ -303,7 +303,7 @@ function scanScoreSummary(results) {
 }
 
 /** 校准统计的类型排序：常用元素在前，其余按出现顺序附后 */
-var SCAN_CALIB_TYPE_ORDER = ["金", "木", "水", "火", "土", "雷", "体"];
+var SCAN_CALIB_TYPE_ORDER = ["金", "木", "水", "火", "土", "雷", "邪", "体"];
 
 /** 体桶不出区间：灰徽标 hue 为图标污染、不可用于校准（体走独立低饱和路径） */
 var SCAN_CALIB_NO_RANGE_TYPES = ["体"];
@@ -1698,9 +1698,11 @@ function scanPixelFeats(data, opts) {
  * 不必要的保护。
  * 参数：preds —— scanCvPixelModel 出折预测（含 group/label/probs/meta）；
  *   opts —— { minMargin, traceMargins }。
- * 返回 { vScoreTh, globalMin, margin, foldMinStats, kills, harms, realTotal,
- *   fakeTotal, killedCases, harmedCases, trace }（trace 为各候选余量下的
- *   杀假/误伤对照，供报告呈现余量敏感性）。
+ * 返回 { vScoreTh, vScoreThByType, typeMin, globalMin, margin, foldMinStats,
+ *   kills, harms, killsByType, harmsByType, realTotal, fakeTotal, killedCases,
+ *   harmedCases, killedCasesByType, harmedCasesByType, trace }（vScoreThByType
+ *   为分类型阈值——按规则链 dotType 分组的出折真锚点 min - margin，消费端缺失
+ *   类型回退 vScoreTh；trace 为各候选余量下的杀假/误伤对照，供报告呈现余量敏感性）。
  */
 function scanTunePixelGate(preds, opts) {
 	const o = opts || {};
@@ -1710,6 +1712,33 @@ function scanTunePixelGate(preds, opts) {
 	const reals = preds.filter((p) => p.label === "real");
 	const fakes = preds.filter((p) => p.label === "fake");
 	const globalMin = Math.min(...reals.map(vScore));
+	const margin = minMargin;
+	const vScoreTh = globalMin - margin;
+	// 分类型阈值（2026-08-10 加邪系后校）：全局阈值由全样本最差出折真锚点决定，
+	// 该极值来自邪（暗徽标泛化落差大），把其余类型阈值一并拖低约 5 分——出折假
+	// dot vScore 集中在 [-10.5,-8] 区间全部漏杀（calib-pixel 报告 survivingFakes）。
+	// 分类型取 min 后阈值只可能 ≥ 全局值（同 margin），语义仍为「零误伤严格档」；
+	// 阈值键取规则链输出 dotType（与 scanCellFeat 验证层消费口径一致）
+	const typeOf = (p) => p.meta.dotType || "?";
+	const typeMin = {};
+	reals.forEach((p) => {
+		const t = typeOf(p);
+		const v = vScore(p);
+		if (!(t in typeMin) || v < typeMin[t]) typeMin[t] = v;
+	});
+	const vScoreThByType = {};
+	Object.entries(typeMin).forEach(([t, v]) => {
+		vScoreThByType[t] = v - margin;
+	});
+	// 分类型阈值下的出折杀假/误伤（生产口径：阈值按各格 dotType 取）
+	const thOfType = (p) => {
+		const th = vScoreThByType[typeOf(p)];
+		return th === undefined ? vScoreTh : th;
+	};
+	const byType = {
+		killed: fakes.filter((p) => vScore(p) < thOfType(p)),
+		harmed: reals.filter((p) => vScore(p) < thOfType(p)),
+	};
 	// 折间 min 抖动分布：每折（group=留一测试图）测试集真锚点 min vScore
 	const byGroup = {};
 	reals.forEach((p) => {
@@ -1719,8 +1748,6 @@ function scanTunePixelGate(preds, opts) {
 	const mean = foldMins.reduce((a, b) => a + b, 0) / foldMins.length;
 	const std = Math.sqrt(foldMins.reduce((a, b) => a + (b - mean) ** 2, 0) / foldMins.length);
 	const fq = (frac) => foldMins[Math.min(foldMins.length - 1, Math.floor(foldMins.length * frac))];
-	const margin = minMargin;
-	const vScoreTh = globalMin - margin;
 	const evalAt = (th) => {
 		const killed = fakes.filter((p) => vScore(p) < th);
 		const harmed = reals.filter((p) => vScore(p) < th);
@@ -1733,15 +1760,21 @@ function scanTunePixelGate(preds, opts) {
 	});
 	return {
 		vScoreTh,
+		vScoreThByType,
+		typeMin,
 		globalMin,
 		margin,
 		foldMinStats: { n: foldMins.length, min: foldMins[0], p5: fq(0.05), p25: fq(0.25), median: fq(0.5), max: foldMins[foldMins.length - 1], mean, std },
 		kills: killed.length,
 		harms: harmed.length,
+		killsByType: byType.killed.length,
+		harmsByType: byType.harmed.length,
 		realTotal: reals.length,
 		fakeTotal: fakes.length,
 		killedCases: killed.map((p) => ({ ...p.meta, vScore: +vScore(p).toFixed(4) })),
 		harmedCases: harmed.map((p) => ({ ...p.meta, vScore: +vScore(p).toFixed(4) })),
+		killedCasesByType: byType.killed.map((p) => ({ ...p.meta, vScore: +vScore(p).toFixed(4) })),
+		harmedCasesByType: byType.harmed.map((p) => ({ ...p.meta, vScore: +vScore(p).toFixed(4) })),
 		trace,
 	};
 }

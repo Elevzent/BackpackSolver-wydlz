@@ -89,8 +89,10 @@
  *   2026-08-05 集成，像素级小模型计划阶段 2，仅 T2 全量 dot 验证）：
  *   - 用途：规则链（规范位彩色/强票补救/体路径/邻域闸门）判 dot=true 的格
  *     过像素 MLP 验证器（16²×3 HSV 降采样 + 1 隐层 tanh + softmax 二分类
- *     real/fake），vScore = log p(real) - log p(fake) < gate.vScoreTh 则
- *     直接否决 dot（dot=false/dotType=null，原判定留 pixelVeto 调试字段）。
+ *     real/fake），vScore = log p(real) - log p(fake) 低于阈值则直接否决
+ *     dot（dot=false/dotType=null，原判定留 pixelVeto 调试字段）；阈值按
+ *     dotType 取 gate.vScoreThByType（分类型出折 min 校准 + 在样收紧，缺失
+ *     类型回退 gate.vScoreTh，校准依据见模型段头注释）。
  *     杀规则链内的假 dot（土系碎裂件内假锚点、规范位纹理伪命中）后，
  *     scanGenCandidates 的冲突否决自然消解，被拖死的真锚点救回。
  *   - 作用域限制：模型兜底（SCAN_TYPE_MODEL）判中的格不过验证器——训练
@@ -305,13 +307,18 @@ var SCAN_DETECT_WIDTH = 600; // 棋盘检测在缩放到该宽度的副本上进
  *   emptyIconPx — 空格兜底判定：格内图标像素数（与底色 RGB 差 > iconDiff）下限。
  *     部分空格底色带品质色（褐底漩涡格 hue~21 会投出金品质票，水7 样例
  *     空格 qconf=1.00），暗底判定漏过它们，拼件候选会把空格当占用格吞入。
- *     校准：1323 个真值占用格 iconPx min=735，63 个「有品质票的空格」max=324
- *     （漩涡纹理），400 介于其间两侧均有 >1.2 倍余量
+ *     校准（2026-08-10 全库 100 图 4200 格重校）：4093 个真值占用格 iconPx
+ *     min=735（金系淡图标格），107 个空格 max=514（火+水(5,6) 高噪漩涡空格，
+ *     次高 384；此前 63 空格样本 max=324 漏掉该档），615 为几何中点两侧
+ *     ≥1.19 倍余量
  *   contLo / contHi — 图标跨格连贯性：候选内部共享边两侧 2px 带内位置对齐的图标
  *     像素相接数 touch 经 [contLo,contHi] 线性映射为边连贯分（≤lo 记 0，≥hi 记 1），
- *     候选连贯分取其最弱边。校准：854 条真值件内边 touch min=7/p5=28，1352 条拼缝边
- *     （相邻格分属两件）p5=7/p25=18；355 件真值多格件最弱边 min=7（故 contLo 不能
- *     超过 7，否则正确候选被打低分反输给拆分方案）
+ *     候选连贯分取「双弱边均值」（2026-08-10 改，原取最弱边——抢格候选的接缝弱边
+ *     会被真件自身弱边掩盖：邪6 真件边 19/60 vs 抢格候选 19/20/60 min 同为 19，
+ *     双弱边均值 39.5 > 19.5 可分）。校准：854 条真值件内边 touch min=7/p5=28，
+ *     1352 条拼缝边 p5=7/p25=18；contLo 仍不能超 7（355 件真值多格件最弱边 min=7），
+ *     contHi=28 对齐真值件内边 p5。全量回归（100 图）：格召回 99.8%、配对率 99.9%，
+ *     其余 96 图零回退
  *   phaseEdgeMin — 棋盘定位相位校正（scanDetectBoard，2026-08-04 新增）：拟合完成后
  *     把当前网格 ±1 行/列的相位变体一并评分，inlier（斑块中心与格中心对齐数）多者
  *     胜出，打平时变体的外边界暗带占比 edge 须低过本余量才换相位，否则保持原相位
@@ -656,7 +663,12 @@ function scanDiskJudge(disk, ranges) {
 		(mx, [t, n]) => (t === dotType ? mx : Math.max(mx, n)),
 		0,
 	);
-	if (rival > SCAN_REC.dotDiskRivalMax) return null;
+	// 分类型异型票上限与判定链 diskOk 同口径（邪走 dotXieDiskRivalMax，缺失回退全局）
+	const rivalMax =
+		dotType === "邪" && SCAN_REC.dotXieDiskRivalMax != null
+			? SCAN_REC.dotXieDiskRivalMax
+			: SCAN_REC.dotDiskRivalMax;
+	if (rival > rivalMax) return null;
 	if (disk.glyphFrac < SCAN_REC.dotDiskGlyphMin) return null;
 	return dotType;
 }
@@ -820,7 +832,14 @@ function scanCellFeat(data, dotTypes, skipModel) {
 			(mx, [ty, m]) => (ty === t ? mx : Math.max(mx, m)),
 			0,
 		);
-		if (rival > SCAN_REC.dotDiskRivalMax) return false;
+		// 邪走分类型上限 dotXieDiskRivalMax（校准依据见 data/scan-fp-refs.js 该键注释）；
+		// 键缺失（旧数据文件）时回退全局值——与 SCAN_REC 整段缺失 throw 不同，单键缺
+		// 失属增量部署场景，回退不产生错误结果
+		const rivalMax =
+			t === "邪" && SCAN_REC.dotXieDiskRivalMax != null
+				? SCAN_REC.dotXieDiskRivalMax
+				: SCAN_REC.dotDiskRivalMax;
+		if (rival > rivalMax) return false;
 		return dk.glyphFrac >= SCAN_REC.dotDiskGlyphMin;
 	};
 	const judgeDisk = (t, f, dk, bgMin, hitMin) =>
@@ -1231,7 +1250,7 @@ function scanCellFeat(data, dotTypes, skipModel) {
 			compMaxSize <= SCAN_REC.badgeCompMax;
 	}
 	// 空格兜底：底色投票会把带品质色的漩涡空格判成占用格（水7 样例 qconf=1.00）。
-	// 真占用格必有大量图标像素（真值 min=735），空格只有漩涡纹理（max=324），
+	// 真占用格必有大量图标像素（全库 min=735），空格只有漩涡纹理（全库 max=514），
 	// 图标像素不足的格统一按空格处理（qual=-1，锚点/徽标一并抹除）
 	const bgPx = scanCellBg(data);
 	let iconPx = 0;
@@ -1256,7 +1275,15 @@ function scanCellFeat(data, dotTypes, skipModel) {
 		const pm = window.SCAN_PIXEL_MODEL;
 		const pv = scanPixelMlpScore(pm, scanPixelMlpFeats(data));
 		const vScore = Math.log(pv.probs.real + 1e-12) - Math.log(pv.probs.fake + 1e-12);
-		if (vScore < pm.gate.vScoreTh) {
+		// 分类型阈值（calib-pixel 按规则链 dotType 分组的出折真锚点 min 校准，依据
+		// 见模型段头注释）：全局阈值被最差类型（邪，暗徽标泛化落差大）拖低时其余
+		// 类型仍保杀假能力；vScoreThByType 缺失或未覆盖该类型时回退全局阈值
+		const thByType =
+			pm.gate.vScoreThByType && dotType !== null
+				? pm.gate.vScoreThByType[dotType]
+				: undefined;
+		const vScoreTh = thByType === undefined ? pm.gate.vScoreTh : thByType;
+		if (vScore < vScoreTh) {
 			pixelVeto = { dotType, vScore: +vScore.toFixed(4) };
 			dot = false;
 			dotType = null;
@@ -2379,8 +2406,11 @@ function scanCellIconMask(data) {
  * 候选图标跨格连贯分：对候选内部每条共享边，沿边界逐位置检查两侧 2px 带内
  * 是否有位置对齐的图标像素（相接数 touch 0-64）。每件法宝的图标是一幅完整
  * 独立的图案，真件内部边上图标多跨界相接；拼件接缝处两侧分属两幅图标，
- * 对齐相接显著更少。候选连贯分 = 最弱边 touch 经 [contLo,contHi] 的线性映射。
- * masks 为格图标掩码缓存（Map "r,c" -> Uint8Array），由调用方按需填充。
+ * 对齐相接显著更少。候选连贯分 = 双弱边（最弱两条边）touch 均值经
+ * [contLo,contHi] 的线性映射——取双弱边而非最弱边：抢格候选（真件+偷来的
+ * 邻格）的接缝弱边会被真件自身的弱边掩盖，单看 min 无法区分（校准依据见
+ * 文件头 contLo/contHi 注释）。masks 为格图标掩码缓存（Map "r,c" ->
+ * Uint8Array），由调用方按需填充。
  */
 function scanCandCont(cells, feat, masks) {
 	if (cells.length < 2) return 1;
@@ -2395,7 +2425,7 @@ function scanCandCont(cells, feat, masks) {
 		}
 		return m;
 	};
-	let minTouch = Infinity;
+	const touches = [];
 	cells.forEach(([r, c]) => {
 		[
 			[1, 0, "v"],
@@ -2419,9 +2449,16 @@ function scanCandCont(cells, feat, masks) {
 				}
 				if (aIcon && bIcon) touch++;
 			}
-			if (touch < minTouch) minTouch = touch;
+			touches.push(touch);
 		});
 	});
+	// 双弱边均值（2026-08-10）：抢格候选=真件+偷来的邻格，其边集=真件的边+接缝弱边，
+	// 单看最弱边时接缝被真件自身的弱边掩盖（邪6：真件边 19/60，抢格候选 19/20/60，
+	// min 同为 19 无法区分）；取最弱两边均值后真件 39.5 > 抢格 19.5 可分。拆分候选
+	// （真件的子集）边更少但全是真件内边，双弱边均值反而缩小了整件与拆分的连贯分
+	// 差距（整件的次弱边通常很强），方向上同样安全
+	touches.sort((a, b) => a - b);
+	const minTouch = touches.length > 1 ? (touches[0] + touches[1]) / 2 : touches[0];
 	const lo = SCAN_REC.contLo;
 	const hi = SCAN_REC.contHi;
 	return Math.max(0, Math.min(1, (minTouch - lo) / (hi - lo)));
@@ -2433,7 +2470,7 @@ function scanCandCont(cells, feat, masks) {
  * （高置信异类格否决，低置信异类格容忍并按比例扣一致性得分）。
  * 得分 = 底色置信 0.4 + 品质一致性 0.25 + 数字徽标 0.15 + 图标跨格连贯 0.2
  * （数字徽标看期望位——形状最下行最右占用格；连贯分单格候选恒为 1，
- * 多格候选取最弱共享边——品质均一棋盘上拼件方案的接缝边得分低，
+ * 多格候选取双弱边均值——品质均一棋盘上拼件方案的接缝边得分低，
  * 打破「覆盖格数打平」时偏向真实拆分的依据），
  * 再减多余徽标惩罚 0.3/个（候选覆盖格内徽标数超过 1 个——拼件吞入邻件
  * 格子必连带其真徽标，超额恒不小于真实拆分方案，方向恒安全）。

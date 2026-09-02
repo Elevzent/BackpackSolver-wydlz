@@ -809,7 +809,7 @@ async function cmdCalibPixel() {
 		hidden: SCAN_PIXEL_ARCH.hidden,
 		activation: SCAN_PIXEL_ARCH.activation,
 		classes: SCAN_PIXEL_CLASSES,
-		epochs: 30,
+		epochs: +(process.env.PIXEL_EPOCHS || 600), // 容量校准（2026-08-10）：30/120/300/600 对照——在样杀假 96/114/115/116、出折杀假 107/107/111/112、误伤均 0/1528；600 两轴皆优（多杀的土13(4,5) 假水锚点贴 300 阈值存活），环境变量供后续实验
 		seed: 20260804,
 	};
 
@@ -835,12 +835,15 @@ async function cmdCalibPixel() {
 	console.log(
 		`[63折留一] 阈值=${gate.vScoreTh.toFixed(4)}（出折真锚点 min=${gate.globalMin.toFixed(4)} - 余量=${gate.margin}，折间min std=${gate.foldMinStats.std.toFixed(3)}）杀假=${gate.kills}/${gate.fakeTotal} 误伤=${gate.harms}/${gate.realTotal}`,
 	);
+	console.log(
+		`[分类型阈值] ${Object.entries(gate.vScoreThByType).map(([t, v]) => `${t}=${v.toFixed(2)}`).join(" ")} → 杀假=${gate.killsByType}/${gate.fakeTotal} 误伤=${gate.harmsByType}/${gate.realTotal}`,
+	);
 
 	// 全量重训最终模型
 	const tf = Date.now();
 	console.log(`全量重训 MLP（${trainOpts.epochs} epochs，${samples.length} 样本）...`);
 	const finalModel = scanTrainPixelMlp(samples, trainOpts);
-	finalModel.gate = { vScoreTh: gate.vScoreTh };
+	finalModel.gate = { vScoreTh: gate.vScoreTh, vScoreThByType: gate.vScoreThByType };
 	console.log(`全量重训 ${((Date.now() - tf) / 1000).toFixed(1)}s，loss=${finalModel.loss.toFixed(4)}`);
 
 	// 最终模型全量 in-sample 判定（对照 truth）
@@ -858,6 +861,37 @@ async function cmdCalibPixel() {
 	const killedFakes = fakeJudged.filter((j) => j.killed);
 	const harmedReals = realJudged.filter((j) => j.killed);
 	console.log(`[全量 in-sample] 杀假=${killedFakes.length}/${fakeJudged.length} 误伤真锚点=${harmedReals.length}/${realJudged.length}（作用域外锚点被杀 ${grayJudged.filter((j) => j.killed).length}/${grayJudged.length}，仅观测）`);
+
+	// 分类型阈值的成品模型在样收紧（2026-08-10）：出折 min 推导的阈值作用于全量
+	// 重训模型时，真锚点在样分可能低于出折 min（训练集含与真锚点近似的硬假样本，
+	// 决策边界压过真锚点簇——实测邪在样 min -2.39 < 出折 min 1.24，22/163 邪锚点
+	// 被 0.74 阈值误伤）。逐类型取 min(出折阈值, 在样 min - margin) 收紧后零误伤
+	// 在样可证；只降不升，杀假能力不优于出折阈值属已知代价
+	const realMinByType = {};
+	realJudged.forEach((j) => {
+		const t = j.dotType || "?";
+		if (!(t in realMinByType) || j.vScore < realMinByType[t]) realMinByType[t] = j.vScore;
+	});
+	Object.keys(finalModel.gate.vScoreThByType).forEach((t) => {
+		const inMin = realMinByType[t];
+		if (inMin !== undefined) {
+			finalModel.gate.vScoreThByType[t] = Math.min(
+				finalModel.gate.vScoreThByType[t],
+				inMin - gate.margin,
+			);
+		}
+	});
+	const judgeByType = (rec) => {
+		const v = vScoreOf(rec.x);
+		const th = finalModel.gate.vScoreThByType[rec.meta.dotType];
+		return { ...rec.meta, vScore: +v.toFixed(4), killed: v < (th === undefined ? finalModel.gate.vScoreTh : th) };
+	};
+	const killedFakesByType = samples.filter((s) => s.label === "fake").map(judgeByType).filter((j) => j.killed);
+	const harmedRealsByType = samples.filter((s) => s.label === "real").map(judgeByType).filter((j) => j.killed);
+	console.log(
+		`[分类型阈值·收紧后] ${Object.entries(finalModel.gate.vScoreThByType).map(([t, v]) => `${t}=${v.toFixed(2)}`).join(" ")}\n` +
+		`  在样：杀假=${killedFakesByType.length}/${fakeJudged.length} 误伤=${harmedRealsByType.length}/${realJudged.length}（目标 0）`,
+	);
 
 	// 模型序列化（权重 4 位小数控体积；预算 ≤200KB）
 	const r4 = (a) => a.map((v) => +v.toFixed(4));
@@ -890,6 +924,10 @@ async function cmdCalibPixel() {
 		`// 种子 20260804）。63 折按图留一：阈值=${gate.vScoreTh.toFixed(4)}（出折真锚点 min vScore\n` +
 		`// ${gate.globalMin.toFixed(4)} - 安全余量 ${gate.margin}；折 min p5=${gate.foldMinStats.p5.toFixed(2)} 远高于阈值，\n` +
 		`// 抖动证据见报告），杀假=${gate.kills}/${gate.fakeTotal}、真锚点误伤=${gate.harms}/${gate.realTotal}；\n` +
+		`// gate.vScoreThByType 为分类型阈值（各类出折真锚点 min - 余量，再按成品模型在样\n` +
+		`// 真锚点 min 收紧——在样分可低于出折 min，收紧后杀假=${killedFakesByType.length}/\n` +
+		`// ${fakeJudged.length}、误伤=${harmedRealsByType.length}/${realJudged.length}）：全局阈值被最差类型的泛化\n` +
+		`// 落差拖低时其余类型不至于漏杀假 dot，类型未覆盖时回退 vScoreTh；\n` +
 		"// 校准依据详见 tools/bench/out/calib-pixel-report.json 与 pixel-model-report.md。\n" +
 		"// dotTypes 为区间水印（训练所对齐的 SCAN_DOT_TYPES），与文件当前区间\n" +
 		"// 不一致即待重训，提取工具据此判定。\n" +
@@ -918,6 +956,10 @@ async function cmdCalibPixel() {
 		cv: { folds: loo.folds, method: "按图留一", trainMs: looMs },
 		gate: {
 			vScoreTh: gate.vScoreTh,
+			vScoreThByType: finalModel.gate.vScoreThByType, // 在样收紧后的生效值
+			vScoreThByTypeOof: gate.vScoreThByType, // 出折 min - margin（收紧前）
+			typeMin: gate.typeMin,
+			realMinByType, // 成品模型在样真锚点分类型 min（收紧依据）
 			globalMinRealVScore: gate.globalMin,
 			margin: gate.margin,
 			margin依据: "固定 0.5：阈值起点已是 63 折最差出折分（极值含泛化落差），折 min 的 p5 远高于阈值即有天然缓冲；不取折 min std（右偏分布被强锚点折抬高，实测会过度保守压杀假）",
@@ -926,17 +968,23 @@ async function cmdCalibPixel() {
 		},
 		loo: {
 			kills: gate.kills,
-			fakeTotal: gate.fakeTotal,
 			harms: gate.harms,
+			killsByType: gate.killsByType,
+			harmsByType: gate.harmsByType,
+			fakeTotal: gate.fakeTotal,
 			realTotal: gate.realTotal,
 			killedCases: gate.killedCases,
 			harmedCases: gate.harmedCases,
+			killedCasesByType: gate.killedCasesByType,
+			harmedCasesByType: gate.harmedCasesByType,
 		},
 		finalInSample: {
 			note: "全量重训模型 + 留一阈值，作用域（dot=true）内判定；灰区锚点仅观测",
 			killedFakes,
 			survivingFakes: fakeJudged.filter((j) => !j.killed),
 			harmedReals,
+			killedFakesByType, // 分类型阈值（在样收紧后）判定
+			harmedRealsByType,
 			realTotal: realJudged.length,
 			fakeTotal: fakeJudged.length,
 			grayAnchorKilled: grayJudged.filter((j) => j.killed),
@@ -966,6 +1014,12 @@ async function cmdCalibPixel() {
 	}
 	console.log(`\n模型 ${modelBytes}B → ${modelPath}`);
 	console.log(`报告 → ${reportPath}`);
+	if (harmedRealsByType.length) {
+		// 在样收紧按构造应零误伤；出现即阈值实现有 bug，禁止带伤写回
+		console.error(`!! 分类型阈值在样误伤 ${harmedRealsByType.length} 个真锚点（应恒 0），中止写回`);
+		harmedRealsByType.forEach((j) => console.error(`  ${j.file} (${j.r},${j.c}) ${j.role} vScore=${j.vScore}`));
+		process.exit(1);
+	}
 
 	// 写回决策摘要 + 确认（--yes 直写 / --no-write 跳过；非 TTY 默认跳过）
 	await writeRefsSectionInteractive({
@@ -979,6 +1033,7 @@ async function cmdCalibPixel() {
 		newBlock: modelJs.trimEnd(),
 		summaryLines: [
 			`阈值 vScoreTh=${gate.vScoreTh.toFixed(4)}（出折真锚点 min ${gate.globalMin.toFixed(4)} - 余量 ${gate.margin}）`,
+			`分类型阈值（在样收紧后）vScoreThByType=${JSON.stringify(Object.fromEntries(Object.entries(finalModel.gate.vScoreThByType).map(([t, v]) => [t, +v.toFixed(2)])))}（在样杀假 ${killedFakesByType.length}/${fakeJudged.length}，误伤 ${harmedRealsByType.length}/${realJudged.length}）`,
 			`出折：杀假 ${gate.kills}/${gate.fakeTotal}，真锚点误伤 ${gate.harms}/${gate.realTotal}`,
 			`全量 in-sample 参考：杀假 ${killedFakes.length}，误伤 ${harmedReals.length}（目标 0）`,
 			`模型体积 ${modelBytes}B`,

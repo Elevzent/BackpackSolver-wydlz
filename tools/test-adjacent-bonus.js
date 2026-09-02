@@ -66,11 +66,11 @@ const provider = {
 	max: 2,
 };
 
-function score(useAdjacentBonus, items, layout, cols = 3) {
+function score(useAdjacentBonus, items, layout, cols = 3, rows = 2) {
 	return context.engScoreLayout(
 		{
 			cols,
-			rows: 2,
+		rows,
 			disabled: [],
 			items,
 			weights: [1, 0, 0],
@@ -89,6 +89,20 @@ function assertAttack(expected, result) {
 assertAttack(100, score(false, [target, provider], [{ item: 0, r: 0, c: 0 }, { item: 1, r: 0, c: 1 }]));
 assertAttack(110, score(true, [target, provider], [{ item: 0, r: 0, c: 0 }, { item: 1, r: 0, c: 1 }]));
 assertAttack(120, score(true, [target, provider], [{ item: 0, r: 0, c: 1 }, { item: 1, r: 0, c: 0 }, { item: 1, r: 0, c: 2 }]));
+
+const multiProvider = {
+	...provider,
+	name: "拜火焚星笙",
+	previewAdjacent: false,
+	attrs: [0, 0, 0, 2],
+	shape: [[0, 1], [0, 1], [1, 1]],
+	max: 1,
+};
+assertAttack(100, score(false, [target, multiProvider], [{ item: 0, r: 0, c: 0 }, { item: 1, r: 0, c: 0 }], 2, 3));
+assertAttack(102, score(true, [target, multiProvider], [{ item: 0, r: 0, c: 0 }, { item: 1, r: 0, c: 0 }], 2, 3));
+
+const unmarkedSingleProvider = { ...provider, previewAdjacent: false };
+assertAttack(100, score(true, [target, unmarkedSingleProvider], [{ item: 0, r: 0, c: 0 }, { item: 1, r: 0, c: 1 }]));
 
 const woodProvider = { ...provider, type: "木" };
 assertAttack(100, score(true, [target, woodProvider], [{ item: 0, r: 0, c: 0 }, { item: 1, r: 0, c: 1 }]));
