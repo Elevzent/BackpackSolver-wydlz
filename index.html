@@ -379,7 +379,7 @@
 		<!-- 截图识别配置（元素圆点色值 SCAN_DOT_TYPES）与法宝图标指纹（SCAN_FP_REFS，同 类型+形状+红/普通 多法宝时由样例校准） -->
 		<!-- 键 `类型|形状|red|normal`；sig 为每格 4×4 块图标像素均值（不足记 null，供精细匹配），sigLegacy 为每格 2×2 块全像素均值 RGB，与 scanPieceFp 输出一致，当前匹配用 sigLegacy -->
 		<!-- 匹配差值超过 maxDiff 时不猜名，低置信交人工选择 -->
-		<script src="./data/scan-fp-refs.js"></script>
+		<script src="./data/scan-fp-refs.js?v=20260902"></script>
 		<!-- 截图识别核心（棋盘定位 / 切格 / 特征与签名 / 棋子识别，与 tools/法宝图标指纹提取工具.html 共用） -->
 		<script src="script/scan-core.js"></script>
 		<!-- OpenCV 懒加载器（与 tools/法宝图标指纹提取工具.html 共用） -->
