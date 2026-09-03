@@ -101,6 +101,21 @@ const multiProvider = {
 assertAttack(100, score(false, [target, multiProvider], [{ item: 0, r: 0, c: 0 }, { item: 1, r: 0, c: 0 }], 2, 3));
 assertAttack(102, score(true, [target, multiProvider], [{ item: 0, r: 0, c: 0 }, { item: 1, r: 0, c: 0 }], 2, 3));
 
+const nanmingLiyan = {
+	name: "南明离炎",
+	type: "火",
+	quality: 4,
+	bonus: [0, 0],
+	attrs: [147, 18, 5000, 0],
+	shape: [[1, 1], [1, 1], [1, 0]],
+	max: 1,
+};
+const baihuoFenxingSheng = { ...multiProvider, type: "火", quality: 3 };
+const fireItems = [nanmingLiyan, baihuoFenxingSheng];
+const fireLayout = [{ item: 0, r: 0, c: 2 }, { item: 1, r: 0, c: 0 }];
+assertAttack(147, score(false, fireItems, fireLayout, 4, 3));
+assertAttack(149.94, score(true, fireItems, fireLayout, 4, 3));
+
 const unmarkedSingleProvider = { ...provider, previewAdjacent: false };
 assertAttack(100, score(true, [target, unmarkedSingleProvider], [{ item: 0, r: 0, c: 0 }, { item: 1, r: 0, c: 1 }]));
 
