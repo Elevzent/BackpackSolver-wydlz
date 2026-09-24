@@ -172,6 +172,11 @@ const buildEmptyRow = (colspan, text) => {
 	return line;
 };
 
+function positiveInteger(value) {
+	const n = Number(value);
+	return Number.isFinite(n) ? Math.max(1, Math.floor(n)) : 1;
+}
+
 // 数量步进器：原生 number 增减按钮各浏览器表现不一（有的没有），统一换成自定义 − / + 按钮
 // （原生 spinner 由 CSS 隐藏）；按住可连续增减；派发 input / change 事件与手动输入等价，既有监听无需改动
 function numStepper(ipt) {
@@ -294,7 +299,7 @@ function blockTableInit(type) {
 		ipt.min = 1;
 		ipt.value = 1;
 		ipt.addEventListener("change", () => {
-			ipt.value = Math.max(1, Number(ipt.value) || 1);
+			ipt.value = positiveInteger(ipt.value);
 		});
 		btn.className = "btn-primary";
 		btn.textContent = "添加";
@@ -313,7 +318,7 @@ function blockTableInit(type) {
 				values,
 				fixed,
 				quality,
-				nums: Math.max(1, Number(ipt.value) || 1),
+				nums: positiveInteger(ipt.value),
 			});
 		});
 
@@ -443,7 +448,7 @@ function renderSelectedBlocks() {
 		ipt.min = 1;
 		ipt.value = item.nums;
 		ipt.addEventListener("change", () => {
-			item.nums = Math.max(1, Number(ipt.value) || 1);
+			item.nums = positiveInteger(ipt.value);
 			ipt.value = item.nums;
 			invalidateBest();
 			updateSelStats();
@@ -533,6 +538,30 @@ function invalidateBest() {
 	activePresetKey = null;
 }
 
+// 历史结果只与完全相同的求解输入比较；旧存档没有此字段时仍可回溯，但下次计算会用新口径替换。
+function bestProblemKey(snap) {
+	return JSON.stringify([
+		snap.cols,
+		snap.rows,
+		[...snap.disabled].sort((a, b) => a - b),
+		snap.items,
+		snap.weights,
+		snap.attrsMax,
+		snap.useAdjacentBonus,
+		snap.fillFirst,
+	]);
+}
+
+function betterHistoricalBest(candidate, previous, fillFirst) {
+	const filled = (best) =>
+		best.result.insts.reduce((sum, inst) => sum + inst.cells.length, 0);
+	const filledDiff = filled(candidate) - filled(previous);
+	const scoreDiff = candidate.score - previous.score;
+	return fillFirst
+		? filledDiff > 0 || (filledDiff === 0 && scoreDiff > 1e-9)
+		: scoreDiff > 1e-9 || (Math.abs(scoreDiff) <= 1e-9 && filledDiff > 0);
+}
+
 // 结算时捕获最优结果：result 剔除不可序列化的 ctx，连同日志与棋盘快照一起保存
 function captureBest() {
 	const logs = [...els.logScroll.querySelectorAll(".log-line")].map((n) => ({
@@ -546,6 +575,7 @@ function captureBest() {
 		weights: engine.snap.weights.slice(), // 判定多次计算的分数是否可比
 		fillFirst: !!engine.snap.fillFirst, // 判定目标模式（填满/属性优先）是否一致
 		useAdjacentBonus: !!engine.snap.useAdjacentBonus,
+		problemKey: bestProblemKey(engine.snap),
 		result,
 		logs,
 		status: els.logStatus.textContent,
@@ -561,7 +591,10 @@ function captureBest() {
 function recallBest() {
 	if (!memBest || calcState.running) return;
 	const b = memBest.board;
-	renderLayoutSolution(memBest.result, {
+	renderLayoutSolution({
+		...memBest.result,
+		ctx: { useAdjacentBonus: !!memBest.useAdjacentBonus },
+	}, {
 		cols: b.cols,
 		rows: b.rows,
 		disabled: new Set(b.disabled),
@@ -1978,6 +2011,7 @@ function engWorkerMain() {
 			layout: bestLayout,
 		});
 		const t0 = Date.now();
+		let lastStatusSent = 0;
 		// 初始温度随初始分尺度自适应（归一化后分数量级远小于 1，不再用绝对下限）
 		const T0 = Math.max(1e-6, score * 0.03);
 		// 退火周期与耗时上限联动：有限时长内安排 4 个周期（重热 3 次），周期间按 0.6 衰减重热；不限时按 30 秒一周期
@@ -2005,15 +2039,20 @@ function engWorkerMain() {
 				lnsCycle();
 			}
 			const dt = (Date.now() - tStart) / 1000;
-			postMessage({
-				type: "status",
-				wid: WID,
-				iter,
-				tps: dt > 0 ? Math.round(20000 / dt) : 0,
-				temp: T,
-				repairs,
-				attempts: lnsAttempts,
-			});
+			// 主线程每秒刷新一次状态；限制跨线程的状态消息频率。
+			const now = Date.now();
+			if (now - lastStatusSent >= 250) {
+				lastStatusSent = now;
+				postMessage({
+					type: "status",
+					wid: WID,
+					iter,
+					tps: dt > 0 ? Math.round(20000 / dt) : 0,
+					temp: T,
+					repairs,
+					attempts: lnsAttempts,
+				});
+			}
 			if (bestScore > lastBestSent + 1e-9) {
 				lastBestSent = bestScore;
 				postMessage({
@@ -2477,22 +2516,12 @@ function stopCalc(reason, statusText) {
 			`最终解：总分 ${fmtScore(r.score, r.maxScore)}（攻 ${fmtNum(r.totals[0])} / 防 ${fmtNum(r.totals[1])} / 血 ${fmtNum(r.totals[2])}），共 ${r.details.length} 件，占格 ${filled}/${freeCells}`,
 			"log-sys",
 		);
-		// 历史最优只在被刷新时替换（v 不一致 = 旧口径的原始分，与归一化分不可比，直接替换）。
-		// 同一问题（权重与目标模式一致）下属性分打平时，按占格数裁决：填得更满的结果更优
+		// 仅同一输入下比较历史最优；填满优先先比占格，其余先比属性分。
 		const sameProblem =
 			!!memBest &&
 			memBest.v === RESULT_VERSION &&
-			String(engine.snap.weights) === String(memBest.weights) &&
-			!!memBest.fillFirst === !!engine.snap.fillFirst &&
-			!!memBest.useAdjacentBonus === !!engine.snap.useAdjacentBonus;
-		const oldFilled = sameProblem
-			? memBest.result.insts.reduce((s, ins) => s + ins.cells.length, 0)
-			: -1;
-		if (
-			!sameProblem ||
-			engine.best.score > memBest.score + 1e-9 ||
-			(engine.best.score > memBest.score - 1e-9 && filled > oldFilled)
-		) {
+			memBest.problemKey === bestProblemKey(engine.snap);
+		if (!sameProblem || betterHistoricalBest(engine.best, memBest, engine.snap.fillFirst)) {
 			memBest = captureBest();
 		}
 		updateRecallBtn();
@@ -3044,7 +3073,7 @@ function scanRenderItems() {
 			cIn.min = 1;
 			cIn.value = item.count;
 			cIn.addEventListener("change", () => {
-				item.count = Math.max(1, Number(cIn.value) || 1);
+				item.count = positiveInteger(cIn.value);
 				cIn.value = item.count;
 				scanUpdateStats();
 			});
